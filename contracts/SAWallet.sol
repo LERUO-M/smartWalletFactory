@@ -107,15 +107,17 @@ contract SAWallet is
 
     /**
      * @dev FICA compliance gate.
-     *      When kycEnforced is true the wallet owner must hold a valid FICA
-     *      clearance on the IKYCRegistry before any execute call succeeds.
+     *      When kycEnforced is true either the wallet proxy (address(this))
+     *      or the wallet owner (EOA) must hold a valid FICA clearance on
+     *      the IKYCRegistry before any execute call succeeds.
      *      This is the integration point for the off-chain FICA oracle.
      */
     modifier ficaCompliant() {
         if (kycEnforced && kycRegistry != address(0)) {
             require(
+                IKYCRegistry(kycRegistry).isKYCApproved(address(this)) ||
                 IKYCRegistry(kycRegistry).isKYCApproved(owner),
-                "SAW: owner not FICA cleared"
+                "SAW: not FICA cleared"
             );
         }
         _;

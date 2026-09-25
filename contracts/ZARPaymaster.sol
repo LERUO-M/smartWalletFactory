@@ -5,6 +5,7 @@ import "@account-abstraction/contracts/core/BasePaymaster.sol";
 import "@account-abstraction/contracts/interfaces/IEntryPoint.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./interfaces/IKYCRegistry.sol";
+import "./SAWallet.sol";
 
 /**
  * @title  ZARPaymaster  (ZAR Gas Paymaster)
@@ -110,9 +111,24 @@ contract ZARPaymaster is BasePaymaster {
         address recovered = hash.recover(sig);
         bool sigFailed = (recovered != verifyingSigner);
 
-        // FICA / KYC on-chain defence-in-depth
+        // FICA / KYC on-chain defence-in-depth:
+        // Accept approval on either the smart wallet proxy address (userOp.sender)
+        // OR the wallet owner EOA.
         if (!sigFailed && kycEnforced && kycRegistry != address(0)) {
-            if (!IKYCRegistry(kycRegistry).isKYCApproved(userOp.sender)) {
+            bool approved = IKYCRegistry(kycRegistry).isKYCApproved(userOp.sender);
+            if (!approved) {
+                if (userOp.sender.code.length > 0) {
+                    // Wallet proxy is already deployed: check if its owner is KYC approved
+                    try SAWallet(payable(userOp.sender)).owner() returns (address walletOwner) {
+                        approved = IKYCRegistry(kycRegistry).isKYCApproved(walletOwner);
+                    } catch {}
+                } else if (userOp.initCode.length >= 56) {
+                    // Counterfactual deployment: extract owner from initCode [24:56]
+                    address initOwner = address(uint160(uint256(bytes32(userOp.initCode[24:56]))));
+                    approved = IKYCRegistry(kycRegistry).isKYCApproved(initOwner);
+                }
+            }
+            if (!approved) {
                 sigFailed = true;
             }
         }

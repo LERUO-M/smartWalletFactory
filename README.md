@@ -94,12 +94,15 @@ smartWalletFactory/
 │   ├── interfaces/
 │   │   └── IKYCRegistry.sol       # Shared FICA interface (wallet + paymaster)
 │   ├── FICARegistry.sol           # Concrete KYC oracle (operator-written)
+│   ├── MockZAR.sol                # Mock ZAR stablecoin with public faucet
 │   ├── SAWallet.sol               # ERC-4337 smart account implementation
 │   ├── SAWalletFactory.sol        # CREATE2 factory + ERC1967Proxy deployer
 │   └── ZARPaymaster.sol           # Verifying gas paymaster
 ├── scripts/
 │   ├── deploy.js                  # Hardhat deploy script (Sepolia)
 │   └── signUserOp.js              # Full UserOperation build + sign + send
+├── test/
+│   └── SAWallet.test.js           # Comprehensive automated test suite
 ├── hardhat.config.js              # Compiler, networks, Etherscan, gas reporter
 ├── .env.example                   # All required environment variables
 └── package.json                   # npm scripts + dependency manifest

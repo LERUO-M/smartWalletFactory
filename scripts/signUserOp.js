@@ -28,6 +28,7 @@ const ENTRY_POINT_ABI = [
 
 const FACTORY_ABI = [
   "function getAddress(address owner, address[] guardians, uint256 threshold, uint256 salt) view returns (address)",
+  "function getWalletAddress(address owner, address[] guardians, uint256 threshold, uint256 salt) view returns (address)",
   "function createAccount(address owner, address[] guardians, uint256 threshold, uint256 salt) returns (address)",
 ];
 
@@ -135,7 +136,7 @@ async function main() {
   const threshold = 1;
   const salt      = 0;
 
-  const walletAddress = await factory.getAddress(owner, guardians, threshold, salt);
+  const walletAddress = await factory.getWalletAddress(owner, guardians, threshold, salt);
   const isDeployed    = (await rpcProvider.getCode(walletAddress)) !== "0x";
   console.log(`\nWallet address : ${walletAddress}`);
   console.log(`Deployed       : ${isDeployed}`);

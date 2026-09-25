@@ -62,7 +62,7 @@ async function main() {
 
   // ── 1. FICARegistry ──────────────────────────────────────────────────────
 
-  console.log("1/4  Deploying FICARegistry …");
+  console.log("1/5  Deploying FICARegistry …");
   const FICARegistry = await ethers.getContractFactory("FICARegistry");
   const ficaRegistry  = await FICARegistry.deploy();
   await ficaRegistry.waitForDeployment();
@@ -70,7 +70,7 @@ async function main() {
 
   // ── 2. SAWalletFactory ───────────────────────────────────────────────────
 
-  console.log("\n2/4  Deploying SAWalletFactory …");
+  console.log("\n2/5  Deploying SAWalletFactory …");
   const SAWalletFactory = await ethers.getContractFactory("SAWalletFactory");
   const factory          = await SAWalletFactory.deploy(ENTRY_POINT_ADDRESS);
   await factory.waitForDeployment();
@@ -79,7 +79,7 @@ async function main() {
 
   // ── 3. ZARPaymaster ──────────────────────────────────────────────────────
 
-  console.log("\n3/4  Deploying ZARPaymaster …");
+  console.log("\n3/5  Deploying ZARPaymaster …");
 
   // In production this comes from a secure HSM; on testnet we reuse the deployer.
   const paymasterSigner = process.env.PAYMASTER_SIGNER_PRIVATE_KEY
@@ -97,7 +97,7 @@ async function main() {
 
   // ── 4. Fund & stake the paymaster ────────────────────────────────────────
 
-  console.log("\n4/4  Funding & staking ZARPaymaster …");
+  console.log("\n4/5  Funding & staking ZARPaymaster …");
 
   // Deposit ETH for gas sponsorship.
   const depositTx = await paymaster.deposit({
@@ -118,6 +118,14 @@ async function main() {
   );
   await waitFor(ficaTx, "Setting FICA registry on paymaster");
 
+  // ── 5. MockZAR Token ────────────────────────────────────────────────────
+
+  console.log("\n5/5  Deploying MockZAR stablecoin …");
+  const MockZAR = await ethers.getContractFactory("MockZAR");
+  const mockZar  = await MockZAR.deploy();
+  await mockZar.waitForDeployment();
+  log("MockZAR (ZAR)", await mockZar.getAddress());
+
   // ── Summary ───────────────────────────────────────────────────────────────
 
   console.log("\n═══════════════════════════════════════════════════════════");
@@ -127,6 +135,7 @@ async function main() {
   console.log(`FICA_REGISTRY_ADDRESS=${await ficaRegistry.getAddress()}`);
   console.log(`FACTORY_ADDRESS=${await factory.getAddress()}`);
   console.log(`PAYMASTER_ADDRESS=${await paymaster.getAddress()}`);
+  console.log(`ZAR_TOKEN_ADDRESS=${await mockZar.getAddress()}`);
   console.log("═══════════════════════════════════════════════════════════\n");
 
   // ── Optional: compute an example wallet address ───────────────────────────
@@ -136,7 +145,7 @@ async function main() {
   const exampleThreshold = 1;
   const exampleSalt      = 0;
 
-  const predictedAddress = await factory.getAddress(
+  const predictedAddress = await factory.getWalletAddress(
     exampleOwner,
     exampleGuardians,
     exampleThreshold,

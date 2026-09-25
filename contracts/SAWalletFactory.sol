@@ -131,5 +131,17 @@ contract SAWalletFactory {
 
         return Create2.computeAddress(bytes32(salt), initCodeHash);
     }
+
+    /**
+     * @notice Alias for getAddress to prevent naming collision with ethers.js v6 `contract.getAddress()`.
+     */
+    function getWalletAddress(
+        address          owner,
+        address[] calldata guardians,
+        uint256          threshold,
+        uint256          salt
+    ) external view returns (address) {
+        return getAddress(owner, guardians, threshold, salt);
+    }
 }
 
