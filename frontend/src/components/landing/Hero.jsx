@@ -14,7 +14,7 @@ export default function Hero() {
   const primary = isAuthenticated
     ? { label: 'Open my wallet', to: '/app' }
     : { label: "Get started — it's free", to: '/onboarding' };
-  const secondary = isAuthenticated ? null : { label: 'I already have a wallet', to: '/app' };
+  const secondary = isAuthenticated ? null : { label: 'I already have a wallet', to: '/login' };
 
   return (
     <section className="relative overflow-hidden">

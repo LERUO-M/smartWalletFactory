@@ -20,7 +20,7 @@ export default function LandingNav() {
             </Link>
           ) : (
             <>
-              <Link to="/app" className="hidden rounded-full px-4 py-2.5 text-sm font-medium text-zaka-cream transition hover:bg-zaka-cream/5 sm:inline-block">
+              <Link to="/login" className="hidden rounded-full px-4 py-2.5 text-sm font-medium text-zaka-cream transition hover:bg-zaka-cream/5 sm:inline-block">
                 Sign in
               </Link>
               <Link to="/onboarding" className="rounded-full bg-zaka-cream px-5 py-2.5 text-sm font-medium text-zaka-ink transition hover:opacity-90">

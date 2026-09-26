@@ -4,7 +4,7 @@ import TopBar from '../TopBar';
 import Title from '../Title';
 import Field from '../Field';
 import Btn from '../Btn';
-import { normalizePhone, findWalletByPhone } from '@/lib/wallet';
+import { normalizePhone, lookupRecipient } from '@/lib/wallet';
 
 export default function SendRecipient({ wallet, onNext }) {
   const [value, setValue] = useState('');
@@ -17,7 +17,7 @@ export default function SendRecipient({ wallet, onNext }) {
     if (!phone) return setError('Enter a valid SA number, e.g. 082 123 4567');
     if (phone === wallet.phone) return setError("You can't send money to yourself");
     setBusy(true);
-    const r = await findWalletByPhone(phone);
+    const r = await lookupRecipient(phone);
     setBusy(false);
     if (!r) return setError('Recipient has not registered yet — ask them to dial *384# first');
     onNext(r);

@@ -18,7 +18,7 @@ function ClaimFlow({ wallet }) {
   const claim = async (pin) => {
     if (!(await verifyPin(wallet, pin))) return 'Incorrect PIN — try again';
     setStep('processing');
-    claimFaucet(wallet)
+    claimFaucet(wallet, pin)
       .then((h) => { setHash(h); setStep('success'); })
       .catch(() => setStep('failed'));
   };

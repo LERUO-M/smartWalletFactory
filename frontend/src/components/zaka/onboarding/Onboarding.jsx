@@ -4,9 +4,10 @@ import WelcomeStep from './WelcomeStep';
 import PhoneStep from './PhoneStep';
 import CreatedStep from './CreatedStep';
 import PinStep from '../PinStep';
-import { createWallet, sendWelcomeBonus } from '@/lib/wallet';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function Onboarding({ onCreated, onDone }) {
+  const { register } = useAuth();
   const [step, setStep] = useState('welcome');
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
@@ -14,11 +15,14 @@ export default function Onboarding({ onCreated, onDone }) {
 
   const confirm = async (p) => {
     if (p !== pin) return 'PINs do not match — try again';
-    const w = await createWallet(phone, p);
-    onCreated();
-    setWallet(w);
-    setStep('done');
-    sendWelcomeBonus(w);
+    try {
+      const w = await register(phone, p);
+      onCreated?.();
+      setWallet(w);
+      setStep('done');
+    } catch (e) {
+      return e.message || 'Could not create wallet — try again';
+    }
   };
 
   return (

@@ -22,10 +22,10 @@ function SendFlow({ wallet }) {
   const menu = <Btn variant="ghost" onClick={() => navigate('/app')}>Back to Menu</Btn>;
 
   const confirm = async (pin) => {
-    if (!(await verifyPin(wallet, pin))) return 'Incorrect PIN — transaction cancelled';
+    if (!(await verifyPin(wallet, pin))) return 'Incorrect PIN — try again';
     if ((wallet.balance || 0) < amount) return `Insufficient balance — your balance is ${zar(wallet.balance)}, tried to send ${zar(amount)}`;
     setStep('processing');
-    sendMoney(wallet, to, amount)
+    sendMoney(wallet, to, amount, pin)
       .then((h) => { setHash(h); setStep('success'); })
       .catch((e) => { setErr(e.message); setStep('failed'); });
   };
