@@ -201,7 +201,23 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
         setScreen(next);
         return Promise.resolve(next);
       }
-      session.current = { id: newSessionId(), serviceCode: code, inputs: [], masked: [], path: [] };
+      // Shortcut dialling, Africa's Talking style: *384*123*2*0831234567*50# is sent as
+      // serviceCode "*384*123#" with the extra segments as the first `text`.
+      const base = live.current.settings.serviceCode;
+      const stem = base.replace(/#$/, "") + "*";
+      let serviceCode = code;
+      let extras: string[] = [];
+      if (base && code !== base && code.startsWith(stem)) {
+        serviceCode = base;
+        extras = code.slice(stem.length).replace(/#$/, "").split("*").filter(Boolean);
+      }
+      session.current = {
+        id: newSessionId(),
+        serviceCode,
+        inputs: extras,
+        masked: extras.map(() => null),
+        path: extras.map((v) => `${v} (dialled)`),
+      };
       return request();
     },
     [request, setScreen],
@@ -279,7 +295,7 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
 
       switch (cur.mode) {
         case "home":
-          if (isChar) return setScreen({ mode: "home", dial: (cur.dial + k).slice(0, 24) });
+          if (isChar) return setScreen({ mode: "home", dial: (cur.dial + k).slice(0, 40) });
           if (k === "softR" || k === "clear") return setScreen({ mode: "home", dial: cur.dial.slice(0, -1) });
           if (k === "end") return setScreen({ mode: "home", dial: "" });
           if ((k === "call" || k === "softL") && cur.dial) return startSession(cur.dial);

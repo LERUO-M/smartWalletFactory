@@ -34,6 +34,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = [
   { id: "sc-send", name: "A sends R50 to B", steps: ["dial", "2", "0831234567", "50", "1234"], expect: "Sending R50.00" },
   { id: "sc-limit", name: "A goes over the R500 daily limit", steps: ["dial", "2", "0831234567", "600"], expect: "over your daily limit" },
   { id: "sc-bal", name: "Check balance", steps: ["dial", "1"], expect: "ZAKA balance" },
+  { id: "sc-short", name: "Shortcut: A sends R20 to B", steps: ["dial *384*123*2*0831234567*20#", "1234"], expect: "Sending R20.00" },
+  { id: "sc-drop", name: "Drop mid-send (then redial with 'Resume')", steps: ["dial", "2", "0831234567", "30"], expect: "PIN" },
+  { id: "sc-resume", name: "Resume the dropped send", steps: ["dial", "1", "1234"], expect: "Sending R30.00" },
   { id: "sc-acct", name: "My account", steps: ["dial", "4"], expect: "Level" },
 ];
 

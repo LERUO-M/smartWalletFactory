@@ -18,6 +18,10 @@
 // REGISTRATION (new users):
 //   PIN → confirm PIN → SA ID number (KYC Level 0) → wallet created + welcome bonus
 //
+// SESSIONS: dropped "Send ZAKA" sessions can be resumed, and menus can be
+// skipped with shortcut codes like *384*123*2*0831234567*50#
+// (services/ussdSessionService.js).
+//
 // MAIN MENU:
 //   1. Check Balance
 //   2. Send ZAKA            recipient → amount (limit check) → PIN → reply at once;
@@ -39,6 +43,7 @@ const userOpService = require("../services/userOpService");
 const kycService    = require("../services/kycService");
 const smsService    = require("../services/smsService");
 const transferService = require("../services/transferService");
+const ussdSessions    = require("../services/ussdSessionService");
 const db            = require("../db");
 const { toE164, isValidE164, formatRand, formatRandShort } = require("../lib/phone");
 
@@ -96,16 +101,28 @@ router.post("/", async (req, res) => {
   const phoneNumber = normalisePhone(rawPhone);
 
   // Split accumulated inputs: "2*0821234567*50*1234" → ["2","0821234567","50","1234"]
-  const inputs = text === "" ? [] : text.split("*");
-  const ctx = { phoneNumber, serviceCode, inputs };
+  const rawInputs = text === "" ? [] : text.split("*");
 
   let response = "";
 
   try {
-    if (!authService.isRegistered(phoneNumber)) {
+    const registered = authService.isRegistered(phoneNumber);
+    const kyc = registered ? kycService.getStatus(phoneNumber) : null;
+
+    // Resume dropped sessions + shortcut dialling (services/ussdSessionService.js)
+    const resolved = ussdSessions.resolve({
+      sessionId, phoneNumber, serviceCode, rawInputs, registered, canResume: !!kyc?.canSend,
+    });
+    const inputs = resolved.inputs;
+    const ctx = { phoneNumber, serviceCode: baseServiceCode(serviceCode), inputs };
+
+    if (resolved.response) {
+      response = resolved.response;
+    } else if (!registered) {
       response = await handleRegistration(ctx);
     } else {
       response = await handleMainMenu(ctx);
+      ussdSessions.afterResponse({ sessionId, phoneNumber, inputs, response });
     }
   } catch (err) {
     console.error(`[USSD ERROR] session=${sessionId} phone=${phoneNumber}`, err);
@@ -116,6 +133,11 @@ router.post("/", async (req, res) => {
   res.set("Content-Type", "text/plain");
   res.send(response);
 });
+
+/** "*384*123*2*083…#" → "*384*123#" when USSD_SERVICE_CODE is set (for "dial … to join" copy) */
+function baseServiceCode(serviceCode) {
+  return ussdSessions.extrasFromServiceCode(serviceCode).length ? process.env.USSD_SERVICE_CODE : serviceCode;
+}
 
 // ── Registration handler ──────────────────────────────────────────────────────
 

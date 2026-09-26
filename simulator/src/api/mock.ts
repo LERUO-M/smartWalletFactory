@@ -247,6 +247,55 @@ function handle(phone: string, serviceCode: string, inputs: string[]): string {
   return `END Invalid option. Please dial again.`;
 }
 
+// ── Resume dropped sessions + shortcut dialling (mirrors ussdSessionService.js) ──
+const RESUME_MS = 5 * 60_000;
+const progress = new Map<string, { inputs: string[]; at: number }>();
+const sessions = new Map<string, { offer: string[] | null; decided: boolean; prefix: string[]; drop: number }>();
+
+const containsPin = (i: string[]) => (i[0] === "2" ? i.length > 3 : i[0] === "3" ? i.length > 1 : i[0] === "4" ? i.length > 2 : false);
+function offerText(saved: string[]) {
+  const [, to, amount] = saved;
+  const what = amount ? `sending ${fmt(Math.round(parseFloat(amount) * 100))} to ${to}` : `sending to ${to}`;
+  return `CON Continue ${what}?\n1. Yes\n2. No`;
+}
+
+function resolveSession(sessionId: string, phone: string, raw: string[]): { inputs: string[]; response?: string } {
+  let s = sessions.get(sessionId);
+  const registered = users.has(phone);
+  if (!s) {
+    s = { offer: null, decided: false, prefix: [], drop: 0 };
+    sessions.set(sessionId, s);
+    if (raw.length > 0) {
+      if (!registered) s.drop = raw.length;
+      else if (containsPin(raw))
+        return { inputs: [], response: `END For your safety, don't put your PIN in the code you dial.\nDial the code and enter your PIN when asked.` };
+      progress.delete(phone);
+      return { inputs: raw.slice(s.drop) };
+    }
+    const p = progress.get(phone);
+    const canSend = registered && users.get(phone)!.level !== null;
+    if (p && canSend && Date.now() - p.at < RESUME_MS) {
+      s.offer = p.inputs;
+      return { inputs: [], response: offerText(p.inputs) };
+    }
+    return { inputs: raw };
+  }
+  if (s.offer && !s.decided) {
+    if (raw.length === 0) return { inputs: [], response: offerText(s.offer) };
+    s.decided = true;
+    s.drop = 1;
+    if (raw[0] === "1") s.prefix = s.offer;
+    else if (raw[0] === "2") progress.delete(phone);
+    else return { inputs: [], response: "END Invalid option. Please dial again." };
+  }
+  return { inputs: s.prefix.concat(raw.slice(s.drop)) };
+}
+
+function afterResponse(phone: string, inputs: string[], response: string) {
+  if (response.startsWith("END")) progress.delete(phone);
+  else if (inputs[0] === "2" && (inputs.length === 2 || inputs.length === 3)) progress.set(phone, { inputs: inputs.slice(0, 3), at: Date.now() });
+}
+
 export const mockBackend: Backend = {
   kind: "mock",
 
@@ -254,8 +303,11 @@ export const mockBackend: Backend = {
     const t0 = performance.now();
     await latency();
     if (signal?.aborted) return { ok: false, status: 0, raw: "", ms: 0, error: "Cancelled by user" };
-    const inputs = req.text === "" ? [] : req.text.split("*");
-    const raw = handle(normalisePhone(req.phoneNumber), req.serviceCode, inputs);
+    const rawInputs = req.text === "" ? [] : req.text.split("*");
+    const phone = normalisePhone(req.phoneNumber);
+    const r = resolveSession(req.sessionId, phone, rawInputs);
+    const raw = r.response ?? handle(phone, req.serviceCode, r.inputs);
+    if (!r.response && users.has(phone)) afterResponse(phone, r.inputs, raw);
     return { ok: true, status: 200, raw, ms: Math.round(performance.now() - t0) };
   },
 
@@ -304,6 +356,8 @@ export const mockBackend: Backend = {
 
 export function resetMock() {
   users.clear();
+  progress.clear();
+  sessions.clear();
   idsInUse.clear();
   transfers.length = 0;
   outbox.length = 0;

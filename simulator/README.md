@@ -2,7 +2,7 @@
 
 A browser stand-in for Africa's Talking. Feature phones dial a USSD code, the simulator
 POSTs to the backend's `/ussd` webhook exactly like AT does, and shows every
-request/response and the phone's on-chain wallet alongside.
+request/response, every SMS the backend sends, and each phone's balance and KYC limits.
 
 ## Run it
 
@@ -58,6 +58,11 @@ behind **Mock mode**, and it implements the same `Backend` interface.
   limits. **Validate** plays the merchant/website and upgrades the person to Level 1 (set the
   admin key in Settings if the backend has `ADMIN_API_KEY`). Chain addresses are hidden unless
   you turn on *Show developer chain details* in Settings.
+- **Shortcut dialling**: dial `*384*123*2*0831234567*50#` and the simulator sends it the way
+  Africa's Talking does (serviceCode `*384*123#`, first `text` `2*0831234567*50`), so you land
+  on the PIN screen. Dialled segments show as "(dialled)" in the session path.
+- **Resuming**: press Esc/red key mid-send, then redial: the backend offers
+  "Continue sending R50.00 to 0831234567? 1. Yes 2. No".
 - **Masking**: inputs that answer a prompt mentioning "PIN" show as `••••`; SA ID numbers show as
   `900101•••••86`.
 - **Scenarios**: scripted input lists replayed at about 600ms per step, with an optional

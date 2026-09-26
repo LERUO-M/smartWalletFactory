@@ -220,6 +220,16 @@ Nothing on USSD or SMS mentions blockchains or addresses. Transfers between ZAKA
 
 **Sending never waits for the blockchain.** After the PIN, the backend checks limits and the available balance (on-chain balance minus transfers still in progress), saves the transfer as *pending* with a ULID reference, and replies at once. `services/transferService.js` then submits it and sends the SMS messages. Pending transfers count toward the sender's limits and balance, so a second send can't overspend while the first is still going through.
 
+### Shortcut dialling and resuming dropped sessions
+
+- **Shortcuts:** skip the menus by dialling everything at once:
+  - `*384*123*2*0831234567*50#` goes straight to "Send R50.00 to 0831234567? Enter your PIN".
+  - `*384*123*1#` shows your balance.
+  - `*384*123*4#` opens My Account.
+
+  PINs are never accepted in the dial code, because they would stay in the phone's call log. People get a safety message instead. Africa's Talking passes the extra digits in `text`, which works as-is. If your gateway puts them in `serviceCode` instead, set `USSD_SERVICE_CODE=*384*123#`.
+- **Resume:** if a "Send ZAKA" session drops after the recipient or amount step, the progress is saved against the phone number, never the PIN. If they redial within `USSD_RESUME_MINUTES` (default 5), they see "Continue sending R50.00 to 0831234567? 1. Yes 2. No". **1** goes straight to the PIN screen. **2** clears it and shows the main menu. The saved progress is cleared when a session finishes, or when they dial a shortcut. The code is in `backend/services/ussdSessionService.js`.
+
 ### KYC tiers
 
 | Level | How you get it | Daily limit | Monthly limit |
