@@ -1,0 +1,219 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { color-scheme: dark; }
+  html:not(.dark) { color-scheme: light; }
+  body { @apply bg-zinc-100 antialiased dark:bg-zinc-950; font-feature-settings: "cv11", "ss01"; }
+  :focus-visible { outline: 2px solid theme(colors.accent.DEFAULT); outline-offset: 2px; }
+}
+
+@layer components {
+  .btn-primary, .btn-secondary, .btn-ghost {
+    @apply inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary { @apply bg-accent-strong text-white hover:bg-accent; }
+  .btn-secondary {
+    @apply border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900
+      dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-white;
+  }
+  .btn-ghost { @apply text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100; }
+  .field {
+    @apply w-full rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs outline-none
+      focus:border-accent dark:border-zinc-700 dark:bg-zinc-900;
+  }
+  .code {
+    @apply max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-md bg-zinc-100 p-2 font-mono text-[11px] leading-relaxed text-zinc-800
+      dark:bg-zinc-950 dark:text-zinc-200;
+  }
+  .bg-accent-soft { background-color: theme(colors.accent.soft); }
+  .bal-up { background-color: rgba(0, 168, 107, 0.22); color: theme(colors.accent.DEFAULT); }
+  .bal-down { background-color: rgba(239, 68, 68, 0.2); color: #ef4444; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   The feature phone. Plastic shell, LCD, rubbery keys.
+   ───────────────────────────────────────────────────────────────────────── */
+
+.phone-shell {
+  --shell-a: #4a4d52;
+  --shell-b: #2b2d31;
+  --shell-edge: #1a1b1e;
+  --key-a: #d9dadc;
+  --key-b: #b7b9bc;
+  --key-ink: #1d1e20;
+  position: relative;
+  width: 252px;
+  padding: 22px 18px 26px;
+  border-radius: 46px 46px 58px 58px / 38px 38px 70px 70px;
+  background:
+    radial-gradient(120% 60% at 30% 0%, rgba(255, 255, 255, 0.16), transparent 60%),
+    linear-gradient(160deg, var(--shell-a), var(--shell-b));
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1.5px var(--shell-edge),
+    0 18px 30px -18px rgba(0, 0, 0, 0.6);
+  outline: none;
+  user-select: none;
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+.phone-shell.is-selected {
+  box-shadow:
+    inset 0 2px 1px rgba(255, 255, 255, 0.18),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.35),
+    0 0 0 1.5px var(--shell-edge),
+    0 0 0 5px rgba(0, 168, 107, 0.45),
+    0 18px 30px -18px rgba(0, 0, 0, 0.6);
+}
+.phone-shell:focus-visible { outline: none; }
+
+.shell-navy { --shell-a: #3b5170; --shell-b: #1f2d42; --shell-edge: #141d2b; }
+.shell-sand { --shell-a: #d8cdb6; --shell-b: #a99c80; --shell-edge: #7c7058; --key-a: #f4f1ea; --key-b: #d6d0c3; }
+.shell-crimson { --shell-a: #8c3a3a; --shell-b: #561f22; --shell-edge: #3a1416; }
+
+.phone-earpiece {
+  margin: 0 auto 8px;
+  width: 54px;
+  height: 6px;
+  border-radius: 6px;
+  background: repeating-linear-gradient(90deg, #111 0 3px, #2c2c2c 3px 6px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.phone-brand {
+  text-align: center;
+  font: 700 9px/1 Inter, sans-serif;
+  letter-spacing: 0.32em;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 9px;
+}
+.shell-sand .phone-brand { color: rgba(0, 0, 0, 0.45); }
+.phone-mic {
+  margin: 14px auto 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #111;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* LCD */
+.lcd {
+  --lcd-bg: #b3c29a;
+  --lcd-ink: #1f2a17;
+  position: relative;
+  height: 196px;
+  padding: 8px 9px 4px;
+  border-radius: 10px;
+  background: var(--lcd-bg);
+  color: var(--lcd-ink);
+  border: 7px solid #141517;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  transition: background-color 0.4s, box-shadow 0.4s;
+  overflow: hidden;
+}
+.lcd::after {
+  /* pixel grid */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+.lcd-lit {
+  --lcd-bg: #c4dc8e;
+  box-shadow:
+    inset 0 2px 8px rgba(0, 0, 0, 0.25),
+    inset 0 0 26px rgba(214, 255, 140, 0.55),
+    0 0 18px rgba(170, 230, 110, 0.28);
+}
+.lcd-inner { flex: 1; min-height: 0; }
+.lcd-soft {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  font-size: 18px;
+  line-height: 18px;
+  height: 20px;
+  padding-top: 2px;
+}
+.lcd-soft span:nth-child(1) { text-align: left; }
+.lcd-soft span:nth-child(3) { text-align: right; }
+.lcd-text { scrollbar-width: none; }
+.lcd-text::-webkit-scrollbar { display: none; }
+
+.lcd-caret {
+  display: inline-block;
+  width: 8px;
+  height: 15px;
+  margin-left: 1px;
+  background: var(--lcd-ink);
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.lcd-spinner {
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--lcd-ink);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.9s steps(8) infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Keys */
+.key {
+  display: grid;
+  place-items: center;
+  color: var(--key-ink);
+  background: linear-gradient(180deg, var(--key-a), var(--key-b));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 2px 0 rgba(0, 0, 0, 0.45),
+    0 3px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 0.06s, box-shadow 0.06s, filter 0.06s;
+  cursor: pointer;
+}
+.key:active, .key.is-pressed {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3), 0 0 0 rgba(0, 0, 0, 0);
+  filter: brightness(0.93);
+}
+.key-num {
+  height: 38px;
+  border-radius: 45% 45% 50% 50% / 55% 55% 45% 45%;
+  gap: 1px;
+  align-content: center;
+}
+.key-soft {
+  height: 26px;
+  border-radius: 14px 14px 18px 18px;
+}
+.key-nav {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.key-nav-btn { width: 34px; height: 28px; border-radius: 14px; }
+.key-nav-c { width: 28px; height: 28px; border-radius: 50%; font: 700 12px/1 Inter, sans-serif; }
+.key-call, .key-end {
+  width: 74px;
+  height: 30px;
+  border-radius: 16px 16px 22px 22px;
+}
+.key-call { color: #fff; --key-a: #2fc27e; --key-b: #0f8c52; }
+.key-end { color: #fff; --key-a: #f0605b; --key-b: #b8281f; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lcd-caret, .lcd-spinner { animation: none; }
+}
