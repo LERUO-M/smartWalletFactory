@@ -29,6 +29,8 @@ const path    = require("path");
 // ── Routes ────────────────────────────────────────────────────────────────────
 const ussdRoute = require("./routes/ussd");
 const apiRoute  = require("./routes/api");
+const authRoute = require("./routes/auth");
+const txRoute   = require("./routes/transactions");
 
 // ── App Setup ─────────────────────────────────────────────────────────────────
 const app = express();
@@ -52,8 +54,10 @@ app.use(express.static(path.join(__dirname, "public")));
 // USSD webhook – Africa's Talking posts here
 app.use("/ussd", ussdRoute);
 
-// REST API for the web simulator
+// REST API for the web simulator + wallet UI
 app.use("/api", apiRoute);
+app.use("/api/auth", authRoute);
+app.use("/api/tx", txRoute);
 
 // ── Health & Root ─────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {

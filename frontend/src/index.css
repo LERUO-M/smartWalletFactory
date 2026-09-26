@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --primary: 0 0% 9%; --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%; --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%; --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%; --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%; --destructive-foreground: 0 0% 98%;
+    --radius: 0.5rem;
+    /* ZAKA palette — LIGHT mode (RGB channels) */
+    --zaka-ink: 247 245 240;
+    --zaka-panel: 255 255 255;
+    --zaka-line: 226 223 215;
+    --zaka-cream: 24 26 28;
+    --zaka-mute: 110 114 118;
+    --zaka-teal: 38 138 130;
+    --zaka-gold: 176 128 44;
+    --font-heading: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --primary: 0 0% 98%; --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%; --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%; --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%; --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%; --destructive-foreground: 0 0% 98%;
+    /* ZAKA palette — DARK mode (RGB channels) */
+    --zaka-ink: 15 17 18;
+    --zaka-panel: 23 25 27;
+    --zaka-line: 42 45 48;
+    --zaka-cream: 244 241 234;
+    --zaka-mute: 141 145 149;
+    --zaka-teal: 58 163 155;
+    --zaka-gold: 226 184 87;
+  }
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  body { @apply bg-zaka-ink text-foreground font-body; }
+}

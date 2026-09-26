@@ -136,13 +136,14 @@ async function register(phoneNumber, pin) {
   const aesKey     = deriveEncryptionKey(phoneNumber, pin);
   const encrypted  = encrypt(wallet.privateKey, aesKey);
 
-  // 4. Persist to DB
+  // 4. Persist to DB (owner_address stored inline so callers don't have to)
   db.prepare(`
-    INSERT INTO users (phone, pin_hash, encrypted_key_iv, encrypted_key_tag, encrypted_key_ciphertext, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO users (phone, pin_hash, owner_address, encrypted_key_iv, encrypted_key_tag, encrypted_key_ciphertext, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     phoneNumber,
     pinHash,
+    wallet.address,
     encrypted.iv,
     encrypted.tag,
     encrypted.ciphertext,
