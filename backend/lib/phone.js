@@ -48,4 +48,25 @@ function isValidE164(phone) {
   return /^\+27\d{9}$/.test(phone);
 }
 
-module.exports = { toE164, isValidE164 };
+// ── Money formatting for SMS / USSD copy ─────────────────────────────────────
+
+/** Cents → "R1,234.50" */
+function formatRand(cents) {
+  const n = Number(cents) / 100;
+  return "R" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Cents → "R500" / "R10,000" when whole, else "R12.50" */
+function formatRandShort(cents) {
+  const n = Number(cents) / 100;
+  return Number.isInteger(n) ? "R" + n.toLocaleString("en-US") : formatRand(cents);
+}
+
+module.exports = {
+  toE164,
+  isValidE164,
+  // routes/auth.js and routes/transactions.js import this name
+  normalizePhone: toE164,
+  formatRand,
+  formatRandShort,
+};

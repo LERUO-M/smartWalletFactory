@@ -4,7 +4,7 @@
 // (or cares) which one it is talking to.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Backend, Health, UssdRequest, UssdResult, WalletInfo } from "../types";
+import type { Backend, Health, KycStatus, SmsList, UssdRequest, UssdResult, WalletInfo } from "../types";
 import { digitsOnly } from "../lib/util";
 import { mockBackend } from "./mock";
 
@@ -83,6 +83,29 @@ export function realBackend(baseUrl: string): Backend {
       } finally {
         clearTimeout(timer);
       }
+    },
+
+    async sms(opts = {}): Promise<SmsList> {
+      const res = await fetch(`${base}/api/sms?limit=${opts.limit ?? 100}`, { headers: extraHeaders(base) });
+      // Older backends have no /api/sms – treat as "no messages" rather than an error
+      if (res.status === 404) return { mode: "unavailable", messages: [] };
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+
+    async verifyKyc(phoneNumber, opts): Promise<KycStatus> {
+      const res = await fetch(`${base}/api/kyc/${digitsOnly(phoneNumber)}/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(opts.adminKey ? { "x-admin-key": opts.adminKey } : {}),
+          ...extraHeaders(base),
+        },
+        body: JSON.stringify({ level: 1, method: opts.method, reference: opts.reference }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.detail || body.error || `HTTP ${res.status}`);
+      return body as KycStatus;
     },
   };
 }

@@ -19,3 +19,9 @@ export function keyClick(kind: "key" | "call" | "end" = "key") {
     /* audio blocked – ignore */
   }
 }
+
+/** Classic two-beep "new message" alert */
+export function smsTone() {
+  keyClick("call");
+  setTimeout(() => keyClick("call"), 160);
+}

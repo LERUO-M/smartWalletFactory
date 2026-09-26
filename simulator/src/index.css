@@ -156,6 +156,7 @@
   animation: blink 1s steps(1) infinite;
 }
 @keyframes blink { 50% { opacity: 0; } }
+.lcd-blink { animation: blink 1.2s steps(1) infinite; }
 
 .lcd-spinner {
   width: 22px;
@@ -215,5 +216,5 @@
 .key-end { color: #fff; --key-a: #f0605b; --key-b: #b8281f; }
 
 @media (prefers-reduced-motion: reduce) {
-  .lcd-caret, .lcd-spinner { animation: none; }
+  .lcd-caret, .lcd-spinner, .lcd-blink { animation: none; }
 }

@@ -1,4 +1,4 @@
-# ZAR Wallet USSD Simulator
+# ZAKA USSD Simulator
 
 A browser stand-in for Africa's Talking. Feature phones dial a USSD code, the simulator
 POSTs to the backend's `/ussd` webhook exactly like AT does, and shows every
@@ -26,7 +26,9 @@ browser. You can also copy it to `backend/public/index.html` so the backend serv
 | --- | --- |
 | `POST {base}/ussd`: JSON `{ sessionId, serviceCode, phoneNumber, text }` → plain text `CON …` / `END …` | every keypress that sends |
 | `GET {base}/api/wallet/{digits}` | wallet panel: when a session ends, on Refresh, and every 10s while the tab is visible |
-| `GET {base}/api/health` | status dot and Factory / Paymaster / Token chips, every 15s |
+| `GET {base}/api/health` | status dot and config chips (Wallets / Fees / ZAKA / SMS), every 15s |
+| `GET {base}/api/sms?limit=100` | SMS inbox on each phone + the inspector's SMS tab, every 3s |
+| `POST {base}/api/kyc/{digits}/verify` | the account panel's **Validate** button (merchant / website KYC → Level 1) |
 
 All backend calls live in `src/api/index.ts`. `src/api/mock.ts` is the in-browser fake
 behind **Mock mode**, and it implements the same `Backend` interface.
@@ -48,6 +50,16 @@ behind **Mock mode**, and it implements the same `Backend` interface.
   for the JSON body and **Copy as cURL**. When a prompt mentions "PIN", the input that answers
   it is masked as `••••` everywhere on screen. The copied cURL command keeps the real
   value so you can replay it.
+- **SMS**: when the backend texts a number that belongs to one of the phones, the phone beeps
+  and shows "1 new message". Press the left soft key (**Read**) to open it; **Older** / **Back**
+  page through the inbox. The inspector's **SMS** tab lists every SMS the backend sent, with
+  Africa's Talking status, message id and cost.
+- **Account panel**: balance, KYC level, and progress bars for today's and this month's sending
+  limits. **Validate** plays the merchant/website and upgrades the person to Level 1 (set the
+  admin key in Settings if the backend has `ADMIN_API_KEY`). Chain addresses are hidden unless
+  you turn on *Show developer chain details* in Settings.
+- **Masking**: inputs that answer a prompt mentioning "PIN" show as `••••`; SA ID numbers show as
+  `900101•••••86`.
 - **Scenarios**: scripted input lists replayed at about 600ms per step, with an optional
   "final screen contains" check. Each line is one step, and the first step must be `dial`
   (or `dial *120*55#`). Scenarios are stored in localStorage and can be imported and

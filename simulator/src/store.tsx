@@ -2,7 +2,7 @@
 // Settings, phones and scenarios persist to localStorage; logs stay in memory.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Backend, LogEntry, PhoneConfig, Scenario, Settings, Shell, WalletInfo } from "./types";
+import type { Backend, LogEntry, PhoneConfig, Scenario, Settings, Shell, SmsMessage, WalletInfo } from "./types";
 import { getBackend } from "./api";
 import { load, save, uid } from "./lib/util";
 
@@ -15,19 +15,26 @@ const DEFAULT_SETTINGS: Settings = {
   muted: false,
   idleTimeoutSec: 60,
   serviceCode: "*384*123#",
+  adminKey: "",
+  showChainDetails: false,
 };
+
+const SMS_POLL_MS = 3_000;
 
 const DEFAULT_PHONES: PhoneConfig[] = [
   { id: "phone-a", nickname: "User A", number: "+27821234567", shell: "graphite" },
   { id: "phone-b", nickname: "User B", number: "+27831234567", shell: "navy" },
 ];
 
+// Valid (checksummed) test SA ID numbers – not real people
 export const DEFAULT_SCENARIOS: Scenario[] = [
-  { id: "sc-reg-a", name: "Register A", steps: ["dial", "1234", "1234"], expect: "Wallet created" },
-  { id: "sc-reg-b", name: "Register B", steps: ["dial", "1234", "1234"], expect: "Wallet created" },
-  { id: "sc-claim", name: "Claim R100", steps: ["dial", "3", "1234"], expect: "claimed" },
-  { id: "sc-send", name: "A sends R50 to B", steps: ["dial", "2", "0831234567", "50", "1234"], expect: "Sent R50.00" },
-  { id: "sc-bal", name: "Check balance", steps: ["dial", "1"], expect: "Balance" },
+  { id: "sc-reg-a", name: "Register A", steps: ["dial", "1234", "1234", "9001015009086"], expect: "Wallet created" },
+  { id: "sc-reg-b", name: "Register B", steps: ["dial", "1234", "1234", "8505055800080"], expect: "Wallet created" },
+  { id: "sc-claim", name: "Claim R100", steps: ["dial", "3", "1234"], expect: "demo ZAKA added" },
+  { id: "sc-send", name: "A sends R50 to B", steps: ["dial", "2", "0831234567", "50", "1234"], expect: "Sending R50.00" },
+  { id: "sc-limit", name: "A goes over the R500 daily limit", steps: ["dial", "2", "0831234567", "600"], expect: "over your daily limit" },
+  { id: "sc-bal", name: "Check balance", steps: ["dial", "1"], expect: "ZAKA balance" },
+  { id: "sc-acct", name: "My account", steps: ["dial", "4"], expect: "Level" },
 ];
 
 const SHELLS: Shell[] = ["graphite", "navy", "sand", "crimson"];
@@ -67,6 +74,17 @@ interface Store {
 
   scenarios: Scenario[];
   setScenarios: (s: Scenario[]) => void;
+
+  /** Every outbound SMS the backend reports, newest first */
+  sms: SmsMessage[];
+  smsMode: string;
+  smsError?: string;
+  /** Highest SMS id each phone has read */
+  smsRead: Record<string, number>;
+  markSmsRead: (phoneId: string, upToId: number) => void;
+  refreshSms: () => void;
+
+  verifyKyc: (phoneId: string, method: "merchant" | "web") => Promise<void>;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -165,6 +183,68 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
   const emitSessionEnd = useCallback((phoneId: string) => listeners.current.forEach((fn) => fn(phoneId)), []);
 
+  // ── SMS polling ───────────────────────────────────────────────────────────
+  const [sms, setSms] = useState<SmsMessage[]>([]);
+  const [smsMode, setSmsMode] = useState("");
+  const [smsError, setSmsError] = useState<string | undefined>();
+  const [smsRead, setSmsRead] = useState<Record<string, number>>({});
+  const maxSmsId = useRef(-1);
+
+  const refreshSms = useCallback(async () => {
+    const be = backendRef.current;
+    try {
+      const list = await be.sms({ limit: 100 });
+      if (be !== backendRef.current) return;
+      setSms(list.messages);
+      setSmsMode(list.mode);
+      setSmsError(undefined);
+      const top = list.messages[0]?.id ?? 0;
+      // New SMS usually means money moved: refresh balances
+      if (maxSmsId.current >= 0 && top > maxSmsId.current) refreshAllWallets();
+      maxSmsId.current = top;
+    } catch (err) {
+      if (be === backendRef.current) setSmsError((err as Error).message);
+    }
+  }, [refreshAllWallets]);
+
+  useEffect(() => {
+    // New backend: forget what was read, but don't flag its existing history as new
+    setSms([]);
+    maxSmsId.current = -1;
+    setSmsRead({});
+    let first = true;
+    const tick = async () => {
+      await refreshSms();
+      if (first) {
+        first = false;
+        const top = maxSmsId.current;
+        setSmsRead(Object.fromEntries(phonesRef.current.map((p) => [p.id, top])));
+      }
+    };
+    void tick();
+    const t = setInterval(() => document.visibilityState === "visible" && void refreshSms(), SMS_POLL_MS);
+    return () => clearInterval(t);
+  }, [backend, refreshSms]);
+
+  const markSmsRead = useCallback((phoneId: string, upToId: number) => {
+    setSmsRead((r) => ((r[phoneId] ?? 0) >= upToId ? r : { ...r, [phoneId]: upToId }));
+  }, []);
+
+  const verifyKyc = useCallback(
+    async (phoneId: string, method: "merchant" | "web") => {
+      const phone = phonesRef.current.find((p) => p.id === phoneId);
+      if (!phone) return;
+      await backendRef.current.verifyKyc(phone.number, {
+        method,
+        reference: `SIM-${Date.now().toString(36).toUpperCase()}`,
+        adminKey: settings.adminKey || undefined,
+      });
+      await refreshWallet(phoneId);
+      setTimeout(() => void refreshSms(), 1200);
+    },
+    [refreshWallet, refreshSms, settings.adminKey],
+  );
+
   const value: Store = {
     settings,
     setSettings,
@@ -185,6 +265,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     emitSessionEnd,
     scenarios,
     setScenarios: setScenariosState,
+    sms,
+    smsMode,
+    smsError,
+    smsRead,
+    markSmsRead,
+    refreshSms: () => void refreshSms(),
+    verifyKyc,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

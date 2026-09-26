@@ -96,4 +96,17 @@ export async function copyText(text: string) {
   }
 }
 
+/** ULID (https://github.com/ulid/spec): 10 chars of time + 16 random, Crockford base32 */
+export function ulid(ms = Date.now()) {
+  const A = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  let t = Math.floor(ms);
+  let time = "";
+  for (let i = 0; i < 10; i++) {
+    time = A[t % 32] + time;
+    t = Math.floor(t / 32);
+  }
+  const rnd = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => A[b % 32]).join("");
+  return time + rnd;
+}
+
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

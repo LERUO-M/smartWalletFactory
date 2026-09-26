@@ -31,6 +31,8 @@ const ussdRoute = require("./routes/ussd");
 const apiRoute  = require("./routes/api");
 const authRoute = require("./routes/auth");
 const txRoute   = require("./routes/transactions");
+const kycRoute  = require("./routes/kyc");
+const smsRoute  = require("./routes/sms");
 
 // ── App Setup ─────────────────────────────────────────────────────────────────
 const app = express();
@@ -58,6 +60,8 @@ app.use("/ussd", ussdRoute);
 app.use("/api", apiRoute);
 app.use("/api/auth", authRoute);
 app.use("/api/tx", txRoute);
+app.use("/api/kyc", kycRoute);   // tiered KYC / ZAKA validation
+app.use("/api/sms", smsRoute);   // SMS log, test send, AT delivery reports
 
 // ── Health & Root ─────────────────────────────────────────────────────────────
 app.get("/", (req, res) => {
@@ -67,6 +71,9 @@ app.get("/", (req, res) => {
       <li><b>POST /ussd</b> – Africa's Talking USSD webhook</li>
       <li><b>GET /api/health</b> – Server health check</li>
       <li><b>GET /api/wallet/:phone</b> – Wallet info for a phone number</li>
+      <li><b>GET /api/kyc/:phone</b> – KYC level, limits and usage</li>
+      <li><b>POST /api/kyc/:phone/verify</b> – Complete ZAKA validation (merchant / website)</li>
+      <li><b>GET /api/sms</b> – Outbound SMS log</li>
       <li><b>GET /</b> (static) – Feature-phone web simulator</li>
     </ul>
     <p>Status: <b style="color:green">Running</b> | ${new Date().toISOString()}</p>
@@ -113,6 +120,16 @@ app.listen(PORT, () => {
   if (missing.length > 0) {
     console.warn(`\n⚠️  Missing .env variables: ${missing.join(", ")}`);
     console.warn("   Copy backend/.env.example → backend/.env and fill in values.\n");
+  }
+
+  const sms = require("./services/smsService");
+  if (sms.mode() === "simulated") {
+    console.warn("📵  SMS is simulated (set AT_USERNAME + AT_API_KEY to send through Africa's Talking).");
+  } else {
+    console.log(`📨  SMS via Africa's Talking (${sms.mode()}) from short code ${process.env.SHORT_CODE || "(none – set SHORT_CODE)"}`);
+  }
+  if (!process.env.ADMIN_API_KEY) {
+    console.warn("🔓  ADMIN_API_KEY not set – /api/kyc/*/verify and /api/sms/send are open. Set it before going live.");
   }
 });
 

@@ -4,10 +4,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import type { LogEntry, PhoneConfig } from "../types";
+import type { LogEntry, PhoneConfig, SmsMessage } from "../types";
 import { parseUssd } from "../api";
 import { useStore } from "../store";
-import { keyClick } from "../lib/sound";
+import { keyClick, smsTone } from "../lib/sound";
 import { controllers, type ScreenSnapshot } from "../lib/controllers";
 import { networkFor, newSessionId, normalisePhone, prettyPhone, sleep, uid } from "../lib/util";
 
@@ -16,13 +16,15 @@ type Screen =
   | { mode: "loading" }
   | { mode: "con"; text: string; input: string }
   | { mode: "end"; text: string }
-  | { mode: "error"; text: string };
+  | { mode: "error"; text: string }
+  | { mode: "sms"; index: number };
 
 interface Session {
   id: string;
   serviceCode: string;
   inputs: string[];
-  secret: boolean[];
+  /** Display value for sensitive inputs (PIN / ID number), null when not sensitive */
+  masked: (string | null)[];
   path: string[];
   abort?: AbortController;
 }
@@ -35,13 +37,20 @@ const MMI_ERROR = "Connection problem or invalid MMI code.";
 const USSD_CODE = /^\*[0-9*]*#$/;
 const PIN_MASK = "••••";
 
+/** How to show an input on screen: PINs fully masked, ID numbers partly */
+function maskFor(prompt: string, value: string): string | null {
+  if (/\bPIN\b/i.test(prompt)) return PIN_MASK;
+  if (/\bID number\b/i.test(prompt)) return value.length > 8 ? value.slice(0, 6) + "•••••" + value.slice(-2) : "•".repeat(value.length);
+  return null;
+}
+
 /** Build a readable breadcrumb label for one input, based on the prompt that asked for it */
-function labelFor(prompt: string, value: string, secret: boolean): string {
-  if (secret) return `PIN ${PIN_MASK}`;
+function labelFor(prompt: string, value: string, masked: string | null): string {
+  if (masked) return /\bPIN\b/i.test(prompt) ? `PIN ${masked}` : `ID ${masked}`;
   const esc = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const menu = new RegExp(`^\\s*${esc}[.)]\\s*(.+)$`, "m").exec(prompt);
   if (menu) return `${value} ${menu[1].trim()}`;
-  if (/amount|\bZAR\b/i.test(prompt) && /^\d+(\.\d+)?$/.test(value)) return `R${value}`;
+  if (/amount|\bZAR\b|\bRand\b/i.test(prompt) && /^\d+(\.\d+)?$/.test(value)) return `R${value}`;
   return value;
 }
 
@@ -51,7 +60,7 @@ const LETTERS: Record<string, string> = {
 };
 
 export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
-  const { backend, settings, addLog, emitSessionEnd, selectedId, select, updatePhone, removePhone, phones } = useStore();
+  const { backend, settings, addLog, emitSessionEnd, selectedId, select, updatePhone, removePhone, phones, sms, smsRead, markSmsRead } = useStore();
   const selected = selectedId === phone.id;
 
   const [screen, setScreenState] = useState<Screen>({ mode: "home", dial: "" });
@@ -73,6 +82,31 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
   // keep latest deps visible to async code
   const live = useRef({ backend, settings, phone });
   live.current = { backend, settings, phone };
+
+  // ── SMS inbox ──────────────────────────────────────────────────────────────
+  const inbox: SmsMessage[] = sms.filter((m) => m.to === phone.number); // newest first
+  const lastRead = smsRead[phone.id] ?? 0;
+  const unread = inbox.filter((m) => m.id > lastRead).length;
+  const inboxRef = useRef(inbox);
+  inboxRef.current = inbox;
+  const prevUnread = useRef(unread);
+  useEffect(() => {
+    if (unread > prevUnread.current) {
+      if (!live.current.settings.muted) smsTone();
+      setActivity((a) => a + 1); // light up the screen
+    }
+    prevUnread.current = unread;
+  }, [unread]);
+
+  const openInbox = useCallback(
+    (index = 0) => {
+      const box = inboxRef.current;
+      if (!box.length) return;
+      markSmsRead(live.current.phone.id, box[0].id);
+      setScreen({ mode: "sms", index: Math.min(index, box.length - 1) });
+    },
+    [markSmsRead, setScreen],
+  );
 
   // ── Clock & backlight ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -101,7 +135,7 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
         serviceCode: s.serviceCode,
         phoneNumber: ph.number,
         text: s.inputs.join("*"),
-        maskedText: s.inputs.map((v, i) => (s.secret[i] ? PIN_MASK : v)).join("*"),
+        maskedText: s.inputs.map((v, i) => s.masked[i] ?? v).join("*"),
         path: [...s.path],
         mock: be.kind === "mock",
         ...fields,
@@ -167,7 +201,7 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
         setScreen(next);
         return Promise.resolve(next);
       }
-      session.current = { id: newSessionId(), serviceCode: code, inputs: [], secret: [], path: [] };
+      session.current = { id: newSessionId(), serviceCode: code, inputs: [], masked: [], path: [] };
       return request();
     },
     [request, setScreen],
@@ -178,10 +212,10 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
     const s = session.current;
     if (cur.mode !== "con" || !s) return Promise.resolve(cur);
     const value = cur.input;
-    const secret = /\bPIN\b/i.test(cur.text);
+    const masked = maskFor(cur.text, value);
     s.inputs.push(value);
-    s.secret.push(secret);
-    s.path.push(labelFor(cur.text, value, secret));
+    s.masked.push(masked);
+    s.path.push(labelFor(cur.text, value, masked));
     return request();
   }, [request]);
 
@@ -221,7 +255,7 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
   useLayoutEffect(() => {
     if (textRef.current) textRef.current.scrollTop = 0;
     updateScroll();
-  }, [screen.mode, "text" in screen ? screen.text : "", updateScroll]); // eslint-disable-line
+  }, [screen.mode, "text" in screen ? screen.text : "", screen.mode === "sms" ? screen.index : -1, updateScroll]); // eslint-disable-line
 
   // ── Key handling ───────────────────────────────────────────────────────────
   const flash = (k: Key) => {
@@ -249,6 +283,11 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
           if (k === "softR" || k === "clear") return setScreen({ mode: "home", dial: cur.dial.slice(0, -1) });
           if (k === "end") return setScreen({ mode: "home", dial: "" });
           if ((k === "call" || k === "softL") && cur.dial) return startSession(cur.dial);
+          if ((k === "softL" || k === "call") && !cur.dial) return openInbox(0);
+          return;
+        case "sms":
+          if (k === "softL" && cur.index < inboxRef.current.length - 1) return setScreen({ mode: "sms", index: cur.index + 1 });
+          if (k === "softR" || k === "end" || k === "clear") return setScreen({ mode: "home", dial: "" });
           return;
         case "loading":
           if (k === "end" || k === "softR") cancelSession("Cancelled while waiting for reply");
@@ -265,7 +304,7 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
           return;
       }
     },
-    [cancelSession, setScreen, startSession, submitInput],
+    [cancelSession, setScreen, startSession, submitInput, openInbox],
   );
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -282,7 +321,7 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
 
   // ── Controller for the scenario runner ─────────────────────────────────────
   useEffect(() => {
-    const snap = (s: Screen): ScreenSnapshot => ({ mode: s.mode, text: "text" in s ? s.text : "" });
+    const snap = (s: Screen): ScreenSnapshot => ({ mode: s.mode === "sms" ? "home" : s.mode, text: "text" in s ? s.text : "" });
     const typeChars = async (chars: string) => {
       for (const ch of chars) {
         if (/^[0-9*#]$/.test(ch)) press(ch as Key);
@@ -324,8 +363,11 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
   let softC = "";
   let softR = "";
   if (screen.mode === "home") {
-    softL = screen.dial ? "Call" : "Menu";
+    softL = screen.dial ? "Call" : unread ? "Read" : inbox.length ? "Inbox" : "Menu";
     softR = screen.dial ? "Clear" : "Names";
+  } else if (screen.mode === "sms") {
+    softL = screen.index < inbox.length - 1 ? "Older" : "";
+    softR = "Back";
   } else if (screen.mode === "loading") softR = "Cancel";
   else if (screen.mode === "con") {
     softL = "Send";
@@ -366,6 +408,15 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
                     <div className="text-[20px] tracking-wide">{network}</div>
                     <div className="text-[34px] leading-[32px]">{hhmm}</div>
                     <div className="text-[15px] opacity-80">{prettyPhone(phone.number)}</div>
+                    {unread > 0 && (
+                      <div className="mt-1 flex items-center gap-1.5 text-[17px]" aria-live="polite">
+                        <svg width="16" height="11" viewBox="0 0 16 11" aria-hidden className="lcd-blink">
+                          <rect x="0.75" y="0.75" width="14.5" height="9.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                          <path d="M1 1l7 5 7-5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                        {unread} new message{unread > 1 ? "s" : ""}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -375,6 +426,29 @@ export function Phone({ phone, index }: { phone: PhoneConfig; index: number }) {
               <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-[19px] leading-[18px]">
                 <div className="lcd-spinner" aria-hidden />
                 <div>USSD code running...</div>
+              </div>
+            )}
+
+            {screen.mode === "sms" && inbox[screen.index] && (
+              <div className="relative flex h-full flex-col">
+                <div className="flex justify-between border-b pb-0.5 text-[16px] leading-[16px]" style={{ borderColor: "rgba(31,42,23,.45)" }}>
+                  <span>From {inbox[screen.index].from || "ZAKA"}</span>
+                  <span>{screen.index + 1}/{inbox.length}</span>
+                </div>
+                <div className="text-[15px] leading-[16px] opacity-75">{new Date(inbox[screen.index].createdAt).toTimeString().slice(0, 5)}</div>
+                <div
+                  ref={textRef}
+                  onScroll={updateScroll}
+                  className="lcd-text flex-1 overflow-y-auto whitespace-pre-wrap break-words pr-2 text-[18px] leading-[17px]"
+                >
+                  {inbox[screen.index].message}
+                </div>
+                {(scroll.up || scroll.down) && (
+                  <div className="pointer-events-none absolute bottom-0 right-0 flex flex-col text-[12px] leading-none">
+                    <span className={scroll.up ? "" : "opacity-0"}>▲</span>
+                    <span className={scroll.down ? "" : "opacity-0"}>▼</span>
+                  </div>
+                )}
               </div>
             )}
 

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { LogEntry } from "../types";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import type { LogEntry, SmsMessage } from "../types";
 import { toCurl } from "../api";
 import { useStore } from "../store";
 import { copyText, prettyPhone, timeHMS } from "../lib/util";
@@ -13,6 +13,32 @@ const BADGE: Record<LogEntry["kind"], string> = {
 };
 
 export function Inspector() {
+  const [tab, setTab] = useState<"ussd" | "sms">("ussd");
+  const { sms, smsRead, phones } = useStore();
+  const unreadTotal = phones.reduce((n, p) => n + sms.filter((m) => m.to === p.number && m.id > (smsRead[p.id] ?? 0)).length, 0);
+  const tabs = (
+    <div role="tablist" aria-label="Inspector view" className="flex rounded-lg bg-zinc-100 p-0.5 text-xs font-medium dark:bg-zinc-800">
+      {(["ussd", "sms"] as const).map((t) => (
+        <button
+          key={t}
+          type="button"
+          role="tab"
+          aria-selected={tab === t}
+          onClick={() => setTab(t)}
+          className={`flex items-center gap-1 rounded-md px-2.5 py-1 ${tab === t ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-950 dark:text-zinc-100" : "text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"}`}
+        >
+          {t === "ussd" ? "USSD" : "SMS"}
+          {t === "sms" && sms.length > 0 && (
+            <span className={`rounded-full px-1.5 text-[10px] ${unreadTotal ? "bg-accent text-white" : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"}`}>{sms.length}</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+  return tab === "ussd" ? <UssdInspector tabs={tabs} /> : <SmsLog tabs={tabs} />;
+}
+
+function UssdInspector({ tabs }: { tabs: ReactNode }) {
   const { phones, selectedId, logs, clearLog, settings } = useStore();
   const phone = phones.find((p) => p.id === selectedId);
   const entries = (phone && logs[phone.id]) || [];
@@ -33,11 +59,14 @@ export function Inspector() {
             {phone ? `${phone.nickname} · ${prettyPhone(phone.number)}` : "No phone selected"} · {entries.length} request{entries.length === 1 ? "" : "s"}
           </p>
         </div>
-        {entries.length > 0 && phone && (
-          <button type="button" onClick={() => clearLog(phone.id)} className="btn-ghost text-xs">
-            Clear
-          </button>
-        )}
+        <div className="flex items-center gap-1">
+          {entries.length > 0 && phone && (
+            <button type="button" onClick={() => clearLog(phone.id)} className="btn-ghost text-xs">
+              Clear
+            </button>
+          )}
+          {tabs}
+        </div>
       </div>
 
       {/* Breadcrumbs of the current / last session */}
@@ -168,5 +197,76 @@ function Field({ label, value }: { label: string; value: string }) {
       <span className="truncate">{value}</span>
       <CopyButton text={value} />
     </div>
+  );
+}
+
+// ── SMS log ─────────────────────────────────────────────────────────────────
+
+const SMS_STATUS: Record<string, string> = {
+  sent: "bg-accent-soft text-accent-strong dark:text-accent ring-accent/30",
+  success: "bg-accent-soft text-accent-strong dark:text-accent ring-accent/30",
+  queued: "bg-sky-500/15 text-sky-700 dark:text-sky-300 ring-sky-500/30",
+  simulated: "bg-gold/20 text-amber-800 dark:text-gold ring-gold/40",
+  failed: "bg-red-500/15 text-red-700 dark:text-red-300 ring-red-500/40",
+};
+
+function SmsLog({ tabs }: { tabs: ReactNode }) {
+  const { sms, smsMode, smsError, phones } = useStore();
+  const nameFor = (to: string) => phones.find((p) => p.number === to)?.nickname;
+  const modeLabel =
+    smsMode === "live" ? "Africa's Talking (live)" : smsMode === "sandbox" ? "Africa's Talking sandbox" : smsMode === "simulated" ? "Simulated (no Africa's Talking keys)" : smsMode === "unavailable" ? "Backend has no /api/sms" : "…";
+
+  return (
+    <Card className="flex min-h-[420px] flex-col lg:h-full">
+      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold">SMS sent by the backend</h2>
+          <p className="truncate text-xs text-zinc-500 dark:text-zinc-400">
+            {modeLabel} · {sms.length} message{sms.length === 1 ? "" : "s"}
+          </p>
+        </div>
+        {tabs}
+      </div>
+      {smsError && <div className="border-b border-red-500/30 bg-red-500/5 px-4 py-2 text-xs text-red-600 dark:text-red-400">Couldn't load SMS: {smsError}</div>}
+      <div className="flex-1 overflow-y-auto p-2" style={{ maxHeight: "calc(100vh - 200px)" }}>
+        {sms.length === 0 ? (
+          <EmptyState title="No SMS yet" body="Send ZAKA between two phones, or go over a limit. The recipient's notification and ZAKA validation messages appear here and on the phones." />
+        ) : (
+          <ol className="flex flex-col gap-1.5">
+            {sms.map((m) => (
+              <SmsRow key={m.id} m={m} name={nameFor(m.to)} />
+            ))}
+          </ol>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function SmsRow({ m, name }: { m: SmsMessage; name?: string }) {
+  const [open, setOpen] = useState(false);
+  const failed = m.status === "failed";
+  return (
+    <li className={`rounded-lg border text-xs ${failed ? "border-red-500/40 bg-red-500/5" : "border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-900/40"}`}>
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full flex-col gap-1 px-3 py-2 text-left">
+        <div className="flex w-full items-center gap-2">
+          <span className={`rounded px-1.5 py-px font-mono text-[10px] font-bold uppercase ring-1 ring-inset ${SMS_STATUS[m.status] ?? SMS_STATUS.queued}`}>{m.status}</span>
+          <span className="font-mono text-[11px] text-zinc-500">{timeHMS(m.createdAt)}</span>
+          <span className="truncate font-mono text-[11px]">→ {m.to}</span>
+          {name && <span className="truncate text-[11px] text-zinc-500">({name})</span>}
+          {m.category && <span className="ml-auto shrink-0 rounded bg-zinc-200 px-1.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{m.category}</span>}
+        </div>
+        <div className="w-full whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">{m.message}</div>
+      </button>
+      {open && (
+        <div className="space-y-1 border-t border-zinc-200 px-3 py-2 font-mono text-[11px] text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
+          <div>from: {m.from || "(none)"} · provider: {m.provider}</div>
+          {m.messageId && <div>messageId: {m.messageId}</div>}
+          {m.statusCode != null && <div>statusCode: {m.statusCode}</div>}
+          {m.cost && <div>cost: {m.cost}</div>}
+          {m.error && <div className="text-red-600 dark:text-red-400">error: {m.error}</div>}
+        </div>
+      )}
+    </li>
   );
 }

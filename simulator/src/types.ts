@@ -17,6 +17,10 @@ export interface Settings {
   idleTimeoutSec: number;
   /** Code used by scenario "dial" steps */
   serviceCode: string;
+  /** Sent as x-admin-key to merchant/admin endpoints */
+  adminKey: string;
+  /** Show wallet/owner addresses in the account panel */
+  showChainDetails: boolean;
 }
 
 // ── Backend contract ────────────────────────────────────────────────────────
@@ -37,19 +41,64 @@ export interface UssdResult {
   error?: string;
 }
 
+export interface KycStatus {
+  /** null = no ID number captured yet (can't send) */
+  level: number | null;
+  tierName: string;
+  canSend: boolean;
+  canUpgrade: boolean;
+  idNumberMasked: string | null;
+  method: string | null;
+  reference: string | null;
+  limits: { dailyCents: number; monthlyCents: number };
+  used: { todayCents: number; monthCents: number };
+  remaining: { todayCents: number; monthCents: number };
+}
+
 export interface WalletInfo {
   registered: boolean;
   phoneNumber: string;
+  balance?: { raw: string; formatted: string };
+  kyc?: KycStatus | null;
+  // developer-only chain details
   ownerAddress?: string;
   walletAddress?: string;
-  balance?: { raw: string; formatted: string };
   deployed?: boolean;
+}
+
+export interface SmsMessage {
+  id: number;
+  to: string;
+  from: string | null;
+  message: string;
+  category: string | null;
+  provider: "africastalking" | "simulated" | string;
+  status: string;
+  statusCode?: number | null;
+  messageId?: string | null;
+  cost?: string | null;
+  error?: string | null;
+  createdAt: number;
+}
+
+export interface SmsList {
+  mode: "live" | "sandbox" | "simulated" | string;
+  messages: SmsMessage[];
 }
 
 export interface Health {
   status: string;
   time: string;
-  env: { factorySet: boolean; paymasterSet: boolean; tokenSet: boolean };
+  env: {
+    factorySet: boolean;
+    paymasterSet: boolean;
+    tokenSet: boolean;
+    smsSet?: boolean;
+    shortCodeSet?: boolean;
+    shortCode?: string | null;
+    smsMode?: "live" | "sandbox" | "simulated";
+    adminKeySet?: boolean;
+  };
 }
 
 export interface Backend {
@@ -57,6 +106,10 @@ export interface Backend {
   ussd(req: UssdRequest, signal?: AbortSignal): Promise<UssdResult>;
   wallet(phoneNumber: string): Promise<WalletInfo>;
   health(): Promise<Health>;
+  /** Outbound SMS log, newest first. Older backends without /api/sms return an empty list. */
+  sms(opts?: { limit?: number }): Promise<SmsList>;
+  /** Complete "ZAKA validation" (merchant / website) → Level 1 */
+  verifyKyc(phoneNumber: string, opts: { method: "merchant" | "web"; reference?: string; adminKey?: string }): Promise<KycStatus>;
 }
 
 // ── Inspector log ───────────────────────────────────────────────────────────

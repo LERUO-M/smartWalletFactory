@@ -49,8 +49,8 @@ export function TopBar({ onOpenScenarios }: { onOpenScenarios: () => void }) {
         <div className="flex items-center gap-2.5">
           <Logo />
           <div className="leading-tight">
-            <div className="text-sm font-semibold tracking-tight">ZAR Wallet USSD Simulator</div>
-            <div className="text-[11px] text-zinc-500">ERC-4337 · Sepolia · Africa's Talking contract</div>
+            <div className="text-sm font-semibold tracking-tight">ZAKA USSD Simulator</div>
+            <div className="text-[11px] text-zinc-500">USSD + SMS · Africa's Talking contract</div>
           </div>
         </div>
 
@@ -71,9 +71,14 @@ export function TopBar({ onOpenScenarios }: { onOpenScenarios: () => void }) {
             />
           </div>
           <div className="hidden items-center gap-1.5 xl:flex">
-            <EnvChip label="Factory" on={env?.factorySet} />
-            <EnvChip label="Paymaster" on={env?.paymasterSet} />
-            <EnvChip label="Token" on={env?.tokenSet} />
+            <EnvChip label="Wallets" on={env?.factorySet} hint="FACTORY_ADDRESS" />
+            <EnvChip label="Fees" on={env?.paymasterSet} hint="PAYMASTER_ADDRESS" />
+            <EnvChip label="ZAKA" on={env?.tokenSet} hint="ZAR_TOKEN_ADDRESS" />
+            <EnvChip
+              label={(env?.smsMode === "live" ? "SMS live" : env?.smsMode === "sandbox" ? "SMS sandbox" : "SMS simulated") + (env?.shortCode ? ` · ${env.shortCode}` : "")}
+              on={env ? (env.smsMode === undefined ? undefined : env.smsMode !== "simulated" || settings.mock) : undefined}
+              hint="AT_USERNAME, AT_API_KEY, SHORT_CODE"
+            />
           </div>
         </div>
 
@@ -108,6 +113,13 @@ export function TopBar({ onOpenScenarios }: { onOpenScenarios: () => void }) {
                 <input id="svc" className="field mb-3" value={settings.serviceCode} onChange={(e) => setSettings({ serviceCode: e.target.value.trim() })} />
                 <label className="mb-1 block font-medium" htmlFor="idle">Idle session timeout (seconds, 0 = off)</label>
                 <input id="idle" type="number" min={0} max={600} className="field mb-3" value={settings.idleTimeoutSec} onChange={(e) => setSettings({ idleTimeoutSec: Math.max(0, Number(e.target.value) || 0) })} />
+                <label className="mb-1 block font-medium" htmlFor="admin-key">Admin key (x-admin-key)</label>
+                <input id="admin-key" type="password" autoComplete="off" className="field mb-1" value={settings.adminKey} onChange={(e) => setSettings({ adminKey: e.target.value.trim() })} placeholder="Only if ADMIN_API_KEY is set" />
+                <p className="mb-3 text-[11px] text-zinc-500">Used by the "Validate" button (merchant / website KYC).</p>
+                <label className="mb-3 flex items-center gap-2 font-medium">
+                  <input type="checkbox" checked={settings.showChainDetails} onChange={(e) => setSettings({ showChainDetails: e.target.checked })} />
+                  Show developer chain details
+                </label>
                 {settings.mock && (
                   <button type="button" className="btn-secondary w-full justify-center" onClick={() => { resetMock(); refreshAllWallets(); }}>
                     Reset mock users &amp; balances
@@ -145,7 +157,7 @@ function HealthDot({ state, title }: { state: "checking" | "ok" | "down" | "mock
   );
 }
 
-function EnvChip({ label, on }: { label: string; on?: boolean }) {
+function EnvChip({ label, on, hint }: { label: string; on?: boolean; hint?: string }) {
   const cls =
     on === undefined
       ? "text-zinc-500 ring-zinc-300 dark:ring-zinc-700"
@@ -153,7 +165,7 @@ function EnvChip({ label, on }: { label: string; on?: boolean }) {
         ? "text-accent-strong dark:text-accent ring-accent/40 bg-accent-soft"
         : "text-red-600 dark:text-red-400 ring-red-500/40 bg-red-500/10";
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ring-1 ring-inset ${cls}`} title={on === undefined ? "Unknown" : on ? "Configured" : "Not configured"}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ring-1 ring-inset ${cls}`} title={(on === undefined ? "Unknown" : on ? "Configured" : "Not configured") + (hint ? ` (${hint})` : "")}>
       {on === undefined ? "–" : on ? "✓" : "✕"} {label}
     </span>
   );

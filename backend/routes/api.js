@@ -10,7 +10,12 @@
 //
 // Protected routes (Bearer JWT required):
 //   POST /api/tx/claim             – claim R100 faucet
-//   POST /api/tx/send              – send ZAR to another phone
+//   POST /api/tx/send              – send ZAR to another phone (KYC limits apply)
+//
+// Also:
+//   GET  /api/transactions/:phone  – recent transfers in/out
+//   /api/kyc/*  (routes/kyc.js)    – tiered KYC / ZAKA validation
+//   /api/sms/*  (routes/sms.js)    – SMS log, test send, AT delivery reports
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use strict";
@@ -24,6 +29,9 @@ const walletService   = require("../services/walletService");
 const userOpService   = require("../services/userOpService");
 const { toE164, isValidE164 } = require("../lib/phone");
 const { sign, requireAuth }   = require("../lib/jwt");
+const kycService      = require("../services/kycService");
+const smsService      = require("../services/smsService");
+const ficaSync        = require("../services/ficaSync");
 
 // ── Provider (lazy) ───────────────────────────────────────────────────────────
 let _provider;
@@ -60,6 +68,12 @@ router.get("/health", (req, res) => {
       factorySet:   !!process.env.FACTORY_ADDRESS,
       paymasterSet: !!process.env.PAYMASTER_ADDRESS,
       tokenSet:     !!process.env.ZAR_TOKEN_ADDRESS,
+      smsSet:       smsService.config().configured,
+      shortCodeSet: !!process.env.SHORT_CODE,
+      shortCode:    process.env.SHORT_CODE || null,
+      smsMode:      smsService.mode(),           // live | sandbox | simulated
+      adminKeySet:  !!process.env.ADMIN_API_KEY,
+      ficaSync:     ficaSync.enabled(),
     },
   });
 });
@@ -93,6 +107,7 @@ router.get("/wallet/:phone", async (req, res) => {
       walletAddress,
       balance: { raw: rawBal.toString(), formatted },
       deployed,
+      kyc: kycService.getStatus(phone),
     });
   } catch (err) {
     console.error("[API /wallet]", err.message);
@@ -116,8 +131,24 @@ router.post("/auth/register", async (req, res) => {
       return res.status(409).json({ error: "A wallet already exists for this phone number" });
     }
 
+    // Optional SA ID number → KYC Level 0 (without it the user can't send yet)
+    const idNumber = req.body.idNumber ? String(req.body.idNumber).replace(/\s+/g, "") : null;
+    if (idNumber) {
+      if (!kycService.validateSaId(idNumber).ok) {
+        return res.status(400).json({ error: "Invalid SA ID number" });
+      }
+      if (kycService.idInUse(idNumber)) {
+        return res.status(409).json({ error: "This ID number is already linked to another phone" });
+      }
+    }
+
     // Register: generates keypair, hashes PIN, encrypts key, stores to DB
     const { walletKeyAddress } = await authService.register(phone, String(pin));
+
+    if (idNumber) {
+      kycService.setIdNumber(phone, idNumber, "web");
+      smsService.sendInBackground(phone, smsService.templates.kycUnlock(), { category: "kyc" });
+    }
 
     // Derive the counterfactual wallet address (no deploy needed)
     const walletAddress = await walletService.getOrPredictWalletAddress(walletKeyAddress, phone);
@@ -135,6 +166,7 @@ router.post("/auth/register", async (req, res) => {
       walletAddress,
       balance:       { raw: "0", formatted: "R0.00" },
       deployed:      false,
+      kyc:           kycService.getStatus(phone),
     });
   } catch (err) {
     console.error("[API /auth/register]", err.message);
@@ -230,6 +262,27 @@ router.post("/tx/send", requireAuth, async (req, res) => {
     if (!recipientPhone) {
       return res.status(400).json({ error: "Invalid recipient phone number" });
     }
+    if (recipientPhone === phone) {
+      return res.status(400).json({ error: "You cannot send to yourself" });
+    }
+
+    const amountCents = Math.round(Number(amountZAR) * 100);
+    if (!(amountCents > 0)) return res.status(400).json({ error: "Invalid amount" });
+
+    // Tiered KYC limits
+    const limit = kycService.checkSend(phone, amountCents);
+    if (!limit.ok) {
+      if (limit.reason !== "no_kyc") {
+        smsService.sendInBackground(phone, smsService.templates.kycUnlock(), { category: "kyc" });
+      }
+      return res.status(403).json({
+        error: limit.reason === "no_kyc"
+          ? "Add your ID number before sending (POST /api/kyc/:phone/id)"
+          : `Over your ${limit.reason} limit (${kycService.limitSummary(limit.status)})`,
+        code: limit.reason === "no_kyc" ? "kyc_required" : "limit_exceeded",
+        kyc: limit.status,
+      });
+    }
 
     if (!authService.isRegistered(recipientPhone)) {
       return res.status(404).json({
@@ -250,26 +303,60 @@ router.post("/tx/send", requireAuth, async (req, res) => {
     // Check balance
     const { raw: balance } = await walletService.getBalance(senderWalletAddress);
     const amountWei = ethers.parseEther(String(amountZAR));
-    if (balance < amountWei) {
+    // Transfers still being processed (e.g. from USSD) are already spoken for
+    const pendingWei = BigInt(kycService.pendingOutgoingCents(phone)) * 10n ** 16n;
+    if (balance - pendingWei < amountWei) {
       return res.status(400).json({
         error: `Insufficient balance. Have ${walletService.formatZAR(balance)}, need ${walletService.formatZAR(amountWei)}`,
       });
     }
 
-    const callData = walletService.encodeZARTransfer(recipientWalletAddress, amountWei);
-    const userOpHash = await userOpService.sendUserOperation({
-      senderWalletAddress,
-      senderPhoneNumber:  phone,
-      senderOwnerAddress: ownerAddress,
-      senderSigner:       signer,
-      callData,
+    const { id: transferId, reference } = kycService.recordTransfer({
+      kind: "transfer", senderPhone: phone, recipientPhone, amountCents, status: "pending",
     });
 
-    res.json({ userOpHash, recipientPhone, recipientWalletAddress });
+    let userOpHash;
+    try {
+      const callData = walletService.encodeZARTransfer(recipientWalletAddress, amountWei);
+      userOpHash = await userOpService.sendUserOperation({
+        senderWalletAddress,
+        senderPhoneNumber:  phone,
+        senderOwnerAddress: ownerAddress,
+        senderSigner:       signer,
+        callData,
+      });
+    } catch (err) {
+      kycService.updateTransfer(transferId, { status: "failed", error: err.message.slice(0, 500) });
+      throw err;
+    }
+    kycService.updateTransfer(transferId, { status: "success", opHash: userOpHash });
+
+    smsService.sendInBackground(
+      recipientPhone,
+      smsService.templates.received(amountCents, phone),
+      { category: "received" }
+    );
+
+    res.json({
+      userOpHash,
+      recipientPhone,
+      recipientWalletAddress,
+      reference,
+      kyc: kycService.getStatus(phone),
+    });
   } catch (err) {
     console.error("[API /tx/send]", err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── GET /api/transactions/:phone ─────────────────────────────────────────────
+
+router.get("/transactions/:phone", (req, res) => {
+  const phone = toE164(decodeURIComponent(req.params.phone));
+  if (!phone) return res.status(400).json({ error: "Invalid phone number" });
+  const limit = Math.min(100, Number(req.query.limit) || 20);
+  res.json({ phoneNumber: phone, transactions: kycService.listTransfers(phone, limit) });
 });
 
 // ── Welcome bonus helper ──────────────────────────────────────────────────────
