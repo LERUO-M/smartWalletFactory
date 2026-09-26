@@ -1,13 +1,13 @@
 // scripts/stakePaymaster.js
 // ─────────────────────────────────────────────────────────────────────────────
-// Top up the ZARPaymaster's stake in the EntryPoint to meet bundler minimums.
+// Top up the ZARPaymaster's stake and gas deposit in the EntryPoint.
 //
-// Run this whenever you see the error:
-//   "entity stake/unstake delay too low"
-//
-// The bundler (Alchemy/Pimlico/Stackup) requires:
-//   • Stake   ≥ 0.1 ETH  (0x16345785d8a0000 wei)
-//   • Unstake delay ≥ 86,400 seconds (24 hours)
+// Solves:
+//   1. "entity stake/unstake delay too low" (ERC-4337 bundler reputation check)
+//      • Requires Stake ≥ 0.1 ETH
+//      • Requires Unstake delay ≥ 86,400s (24 hours)
+//   2. "paymaster deposit too low" / gas sponsorship depletion
+//      • Deposits 0.1 ETH into the EntryPoint for user gas sponsorship
 //
 // Usage:
 //   npx hardhat run scripts/stakePaymaster.js --network sepolia
@@ -19,9 +19,11 @@
 const { ethers } = require("hardhat");
 require("dotenv").config();
 
-// Bundler-enforced minimums
-const REQUIRED_STAKE_ETH     = "0.1";   // 0.1 ETH — the bundler rejects anything less
-const UNSTAKE_DELAY_SECONDS  = 86400;   // 24 hours
+// Bundler-enforced minimums & deposit configuration
+const REQUIRED_STAKE_ETH     = "0.1";   // 0.1 ETH — bundler minimum stake
+const UNSTAKE_DELAY_SECONDS  = 86400;   // 24 hours — bundler minimum delay
+const DEPOSIT_AMOUNT_ETH     = process.env.DEPOSIT_AMOUNT_ETH || "0.1"; // Default 0.1 ETH deposit
+
 
 const PAYMASTER_ABI = [
   "function getDeposit() view returns (uint256)",
@@ -46,53 +48,60 @@ async function main() {
   }
 
   console.log("\n═══════════════════════════════════════════════════════════");
-  console.log("  ZARPaymaster – Stake Top-Up");
+  console.log("  ZARPaymaster – Stake & Deposit Management");
   console.log("═══════════════════════════════════════════════════════════");
   console.log(`  Signer:    ${signer.address}`);
   console.log(`  Paymaster: ${paymasterAddress}`);
-  console.log(
-    `  Balance:   ${ethers.formatEther(
-      await ethers.provider.getBalance(signer.address)
-    )} ETH`
-  );
 
-  // ── Check current stake ───────────────────────────────────────────────────
+  const signerBalance = await ethers.provider.getBalance(signer.address);
+  console.log(`  Balance:   ${ethers.formatEther(signerBalance)} ETH`);
+
+  // ── Check current paymaster state in EntryPoint ───────────────────────────
 
   const entryPoint = new ethers.Contract(ENTRY_POINT, ENTRY_POINT_ABI, signer);
   const info = await entryPoint.getDepositInfo(paymasterAddress);
 
   console.log("\n  Current paymaster state in EntryPoint:");
-  console.log(`    deposit:         ${ethers.formatEther(info.deposit)} ETH`);
-  console.log(`    staked:          ${info.staked}`);
-  console.log(`    stake:           ${ethers.formatEther(info.stake)} ETH`);
-  console.log(`    unstakeDelay:    ${info.unstakeDelaySec}s`);
-  console.log(`    withdrawTime:    ${info.withdrawTime}`);
+  console.log(`    Deposit:         ${ethers.formatEther(info.deposit)} ETH (for user gas sponsorship)`);
+  console.log(`    Staked:          ${info.staked}`);
+  console.log(`    Stake:           ${ethers.formatEther(info.stake)} ETH`);
+  console.log(`    Unstake delay:   ${info.unstakeDelaySec}s`);
+  console.log(`    Withdraw time:   ${info.withdrawTime}`);
 
-  const requiredWei = ethers.parseEther(REQUIRED_STAKE_ETH);
-  const alreadyStaked = info.stake;
-  const delayOk = info.unstakeDelaySec >= UNSTAKE_DELAY_SECONDS;
+  const requiredStakeWei = ethers.parseEther(REQUIRED_STAKE_ETH);
+  const alreadyStaked    = info.stake;
+  const delayOk          = info.unstakeDelaySec >= UNSTAKE_DELAY_SECONDS;
+  const needsStakeUpdate = alreadyStaked < requiredStakeWei || !delayOk;
 
-  if (alreadyStaked >= requiredWei && delayOk) {
-    console.log("\n  ✅ Stake is already sufficient — no action needed.");
-    console.log(`     (${ethers.formatEther(alreadyStaked)} ETH ≥ ${REQUIRED_STAKE_ETH} ETH required)`);
-    return;
-  }
-
-  // ── Top up stake ──────────────────────────────────────────────────────────
-
-  const topUpAmount = alreadyStaked >= requiredWei
+  const stakeTopUpAmount = alreadyStaked >= requiredStakeWei
     ? 0n
-    : requiredWei - alreadyStaked;
+    : requiredStakeWei - alreadyStaked;
 
-  const signerBalance = await ethers.provider.getBalance(signer.address);
-  const gasBuffer     = ethers.parseEther("0.005"); // reserve for gas costs
+  const depositAmountWei = ethers.parseEther(DEPOSIT_AMOUNT_ETH);
+  const totalEthNeeded   = stakeTopUpAmount + depositAmountWei;
+  const gasBuffer        = ethers.parseEther("0.005");
 
-  if (topUpAmount > 0n && signerBalance < topUpAmount + gasBuffer) {
+  console.log("\n  Plan:");
+  if (needsStakeUpdate) {
+    if (stakeTopUpAmount > 0n) {
+      console.log(`    • Top up stake:     +${ethers.formatEther(stakeTopUpAmount)} ETH (to reach ${REQUIRED_STAKE_ETH} ETH)`);
+    } else {
+      console.log(`    • Update unstake delay to ${UNSTAKE_DELAY_SECONDS}s`);
+    }
+  } else {
+    console.log(`    • Stake:            Already sufficient (${ethers.formatEther(alreadyStaked)} ETH ≥ ${REQUIRED_STAKE_ETH} ETH)`);
+  }
+  console.log(`    • Add gas deposit:  +${DEPOSIT_AMOUNT_ETH} ETH`);
+  console.log(`    • Total ETH needed:  ${ethers.formatEther(totalEthNeeded)} ETH (+ ~0.005 ETH for gas)`);
+
+  // ── Balance check ─────────────────────────────────────────────────────────
+
+  if (signerBalance < totalEthNeeded + gasBuffer) {
     console.log("\n  ❌ Insufficient ETH in deployer wallet.");
-    console.log(`     Have:  ${ethers.formatEther(signerBalance)} ETH`);
-    console.log(`     Need:  ${ethers.formatEther(topUpAmount)} ETH for stake + ~0.005 ETH for gas`);
-    console.log("\n  Get free Sepolia ETH from one of these faucets:");
-    console.log("     • https://sepoliafaucet.com             (Alchemy — 0.5 ETH/day, needs login)");
+    console.log(`     Available: ${ethers.formatEther(signerBalance)} ETH`);
+    console.log(`     Required:  ${ethers.formatEther(totalEthNeeded + gasBuffer)} ETH (${ethers.formatEther(totalEthNeeded)} ETH actions + ~0.005 ETH gas)`);
+    console.log("\n  Get free Sepolia ETH from faucets:");
+    console.log("     • https://sepoliafaucet.com             (Alchemy — 0.5 ETH/day)");
     console.log("     • https://faucet.quicknode.com/ethereum/sepolia (QuickNode)");
     console.log("     • https://faucets.chain.link/sepolia    (Chainlink — 0.1 ETH/day)");
     console.log(`\n  Then re-run:  npx hardhat run scripts/stakePaymaster.js --network sepolia\n`);
@@ -100,34 +109,44 @@ async function main() {
     return;
   }
 
-  if (topUpAmount > 0n) {
-    console.log(`\n  ⏳ Adding stake: ${ethers.formatEther(topUpAmount)} ETH (to reach ${REQUIRED_STAKE_ETH} ETH) …`);
+  const paymaster = new ethers.Contract(paymasterAddress, PAYMASTER_ABI, signer);
+
+  // ── 1. Top up stake (if needed) ───────────────────────────────────────────
+
+  if (needsStakeUpdate) {
+    console.log(`\n  ⏳ [1/2] Updating stake: adding ${ethers.formatEther(stakeTopUpAmount)} ETH stake …`);
+    const stakeTx = await paymaster.addStake(UNSTAKE_DELAY_SECONDS, {
+      value: stakeTopUpAmount,
+    });
+    const receipt = await stakeTx.wait();
+    console.log(`  ✓ Stake updated! (tx: ${receipt.hash}, gas: ${receipt.gasUsed.toLocaleString()})`);
   } else {
-    console.log(`\n  ⏳ Stake amount OK but delay too short — re-staking with ${UNSTAKE_DELAY_SECONDS}s delay …`);
+    console.log("\n  ✓ [1/2] Stake already meets bundler requirements (skipping stake tx).");
   }
 
-  const paymaster = new ethers.Contract(paymasterAddress, PAYMASTER_ABI, signer);
-  const tx = await paymaster.addStake(UNSTAKE_DELAY_SECONDS, {
-    value: topUpAmount,
-  });
-  const receipt = await tx.wait();
-  console.log(`  ✅ Stake updated  (tx: ${receipt.hash}, gas: ${receipt.gasUsed.toLocaleString()})`);
+  // ── 2. Deposit 0.1 ETH for gas sponsorship ────────────────────────────────
 
-  // ── Verify ────────────────────────────────────────────────────────────────
+  console.log(`\n  ⏳ [2/2] Depositing ${DEPOSIT_AMOUNT_ETH} ETH to EntryPoint for gas sponsorship …`);
+  const depositTx = await paymaster.deposit({
+    value: depositAmountWei,
+  });
+  const depReceipt = await depositTx.wait();
+  console.log(`  ✓ Deposit confirmed! (tx: ${depReceipt.hash}, gas: ${depReceipt.gasUsed.toLocaleString()})`);
+
+  // ── Verify final state ────────────────────────────────────────────────────
 
   const updated = await entryPoint.getDepositInfo(paymasterAddress);
-  console.log("\n  Updated paymaster state:");
-  console.log(`    deposit:         ${ethers.formatEther(updated.deposit)} ETH`);
-  console.log(`    staked:          ${updated.staked}`);
-  console.log(`    stake:           ${ethers.formatEther(updated.stake)} ETH  ✅`);
-  console.log(`    unstakeDelay:    ${updated.unstakeDelaySec}s  ✅`);
-
   console.log("\n═══════════════════════════════════════════════════════════");
-  console.log("  Done — restart the backend and retry your transaction.");
+  console.log("  Updated Paymaster Status");
+  console.log("═══════════════════════════════════════════════════════════");
+  console.log(`    Deposit:       ${ethers.formatEther(updated.deposit)} ETH  ✓`);
+  console.log(`    Staked:        ${updated.staked}  ✓`);
+  console.log(`    Stake:         ${ethers.formatEther(updated.stake)} ETH  ✓`);
+  console.log(`    Unstake delay: ${updated.unstakeDelaySec}s  ✓`);
   console.log("═══════════════════════════════════════════════════════════\n");
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error("Fatal error:", err);
   process.exitCode = 1;
 });

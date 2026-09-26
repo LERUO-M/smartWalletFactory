@@ -22,7 +22,9 @@ require("dotenv").config();
 
 const ENTRY_POINT_DEFAULT = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
 
-async function verifyContract(name, address, constructorArguments = [], contractPath = null) {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function verifyContract(name, address, constructorArguments = [], contractPath = null, maxRetries = 3) {
   console.log(`\n⏳ Verifying ${name} at ${address} …`);
 
   const params = {
@@ -34,21 +36,30 @@ async function verifyContract(name, address, constructorArguments = [], contract
     params.contract = contractPath;
   }
 
-  try {
-    await hre.run("verify:verify", params);
-    console.log(`  ✓ ${name} verified successfully!`);
-    console.log(`    Explorer: https://sepolia.etherscan.io/address/${address}#code`);
-    return { name, address, status: "Verified" };
-  } catch (err) {
-    const msg = err.message || "";
-    if (
-      msg.toLowerCase().includes("already verified") ||
-      msg.toLowerCase().includes("contract source code already verified")
-    ) {
-      console.log(`  ✓ ${name} is already verified.`);
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await hre.run("verify:verify", params);
+      console.log(`  ✓ ${name} verified successfully!`);
       console.log(`    Explorer: https://sepolia.etherscan.io/address/${address}#code`);
-      return { name, address, status: "Already verified" };
-    } else {
+      await sleep(3000); // polite pause for Etherscan rate limits
+      return { name, address, status: "Verified" };
+    } catch (err) {
+      const msg = err.message || "";
+      if (
+        msg.toLowerCase().includes("already verified") ||
+        msg.toLowerCase().includes("contract source code already verified")
+      ) {
+        console.log(`  ✓ ${name} is already verified.`);
+        console.log(`    Explorer: https://sepolia.etherscan.io/address/${address}#code`);
+        return { name, address, status: "Already verified" };
+      }
+
+      if (attempt < maxRetries && (msg.includes("Timeout") || msg.includes("network request failed"))) {
+        console.warn(`  ⚠️ Attempt ${attempt} timed out, retrying in 5s …`);
+        await sleep(5000);
+        continue;
+      }
+
       console.error(`  ✗ Verification failed for ${name}:`, msg);
       return { name, address, status: "Failed", error: msg };
     }

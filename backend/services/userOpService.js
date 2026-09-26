@@ -167,58 +167,88 @@ async function sendUserOperation({
   // ── 2. Fetch gas fees ──────────────────────────────────────────────────────
   const { maxFeePerGas, maxPriorityFeePerGas } = await getGasFees();
 
-  // ── 3. Validity window ─────────────────────────────────────────────────────
-  const validAfter = 0;
-  const validUntil = Math.floor(Date.now() / 1000) + VALID_WINDOW_SECONDS;
+  // ── 3. Gas Limits ──────────────────────────────────────────────────────────
+  // Bundlers (like Alchemy) enforce strict verification gas efficiency:
+  // actualVerificationGas / verificationGasLimit >= 0.20
+  // Setting an oversized verificationGasLimit (e.g. 400,000 when actual usage is ~24k)
+  // causes the bundler to reject with:
+  //   "Verification gas limit efficiency too low. Required: 0.2, Actual: 0.0601..."
+  let verificationGasLimit = deployed
+    ? 80_000n     // ~24k actual / 80k = 30% efficiency (satisfies ≥ 20% rule)
+    : 250_000n;   // counterfactual first-deploy requires ~160k / 250k = 64% efficiency
 
-  // ── 4. Build partial UserOp with dummy paymaster sig ──────────────────────
-  const dummySig = "0x" + "00".repeat(65);
-  const dummyPaymasterData = packPaymasterAndData(
-    paymasterAddress, validUntil, validAfter, dummySig
-  );
+  let callGasLimit       = 120_000n; // ERC-20 transfer / faucet takes ~35k-55k gas
+  let preVerificationGas = 50_000n;
 
-  const userOp = {
-    sender:               senderWalletAddress,
-    nonce,
-    initCode,
-    callData,
-    callGasLimit:         GAS_LIMITS.callGasLimit,
-    verificationGasLimit: GAS_LIMITS.verificationGasLimit,
-    preVerificationGas:   GAS_LIMITS.preVerificationGas,
-    maxFeePerGas,
-    maxPriorityFeePerGas,
-    paymasterAndData:     dummyPaymasterData,
-    signature:            "0x",
-  };
+  // ── 4. Sign and Dispatch (with self-healing efficiency retry) ──────────────
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const validAfter = 0;
+    const validUntil = Math.floor(Date.now() / 1000) + VALID_WINDOW_SECONDS;
 
-  // ── 5. Get real paymaster signature ───────────────────────────────────────
-  const paymasterHash = await paymaster.getHash(userOp, validUntil, validAfter);
-  const paymasterSig  = await paymasterSigner.signMessage(
-    ethers.getBytes(paymasterHash)
-  );
-  userOp.paymasterAndData = packPaymasterAndData(
-    paymasterAddress, validUntil, validAfter, paymasterSig
-  );
+    const dummySig = "0x" + "00".repeat(65);
+    const dummyPaymasterData = packPaymasterAndData(
+      paymasterAddress, validUntil, validAfter, dummySig
+    );
 
-  // ── 6. Sign the full UserOp hash with the user's key ──────────────────────
-  const userOpHash    = await entryPoint.getUserOpHash(userOp);
-  userOp.signature    = await senderSigner.signMessage(ethers.getBytes(userOpHash));
+    const userOp = {
+      sender:               senderWalletAddress,
+      nonce,
+      initCode,
+      callData,
+      callGasLimit,
+      verificationGasLimit,
+      preVerificationGas,
+      maxFeePerGas,
+      maxPriorityFeePerGas,
+      paymasterAndData:     dummyPaymasterData,
+      signature:            "0x",
+    };
 
-  // ── 7. Serialise BigInts to hex strings (bundler JSON-RPC requirement) ────
-  const userOpForBundler = Object.fromEntries(
-    Object.entries(userOp).map(([k, v]) => [
-      k,
-      typeof v === "bigint" ? ethers.toBeHex(v) : v,
-    ])
-  );
+    // Sign paymaster hash
+    const paymasterHash = await paymaster.getHash(userOp, validUntil, validAfter);
+    const paymasterSig  = await paymasterSigner.signMessage(
+      ethers.getBytes(paymasterHash)
+    );
+    userOp.paymasterAndData = packPaymasterAndData(
+      paymasterAddress, validUntil, validAfter, paymasterSig
+    );
 
-  // ── 8. Dispatch to the bundler ─────────────────────────────────────────────
-  const opHash = await bundlerProvider.send("eth_sendUserOperation", [
-    userOpForBundler,
-    process.env.ENTRY_POINT_ADDRESS,
-  ]);
+    // Sign userOp hash
+    const userOpHash = await entryPoint.getUserOpHash(userOp);
+    userOp.signature = await senderSigner.signMessage(ethers.getBytes(userOpHash));
 
-  return opHash;
+    // Serialise BigInts to hex strings
+    const userOpForBundler = Object.fromEntries(
+      Object.entries(userOp).map(([k, v]) => [
+        k,
+        typeof v === "bigint" ? ethers.toBeHex(v) : v,
+      ])
+    );
+
+    try {
+      const opHash = await bundlerProvider.send("eth_sendUserOperation", [
+        userOpForBundler,
+        process.env.ENTRY_POINT_ADDRESS,
+      ]);
+      return opHash;
+    } catch (err) {
+      const msg = err.message || JSON.stringify(err);
+      if (attempt === 0 && msg.includes("Verification gas limit efficiency too low")) {
+        const match = msg.match(/Actual:\s*([0-9.]+)/i);
+        if (match) {
+          const ratio = parseFloat(match[1]);
+          const actualGas = Number(verificationGasLimit) * ratio;
+          // Target ~30% efficiency (well above 20% required minimum)
+          verificationGasLimit = BigInt(Math.ceil(actualGas / 0.30));
+          console.log(
+            `[userOpService] Auto-adjusting verificationGasLimit based on bundler simulation: actual=${actualGas.toFixed(0)} gas → new limit=${verificationGasLimit}`
+          );
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
 }
 
 /**
