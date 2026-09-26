@@ -3,11 +3,11 @@ import { Wallet, Zap, ShieldCheck, Gift, Phone, ArrowUpRight } from 'lucide-reac
 
 const ITEMS = [
   { icon: Wallet, title: 'No bank account', body: 'All you need is a phone number to open a wallet.' },
-  { icon: Zap, title: 'Zero fees', body: 'Every payment is free — fees are covered for you.' },
-  { icon: ShieldCheck, title: 'PIN-secured', body: 'Approve each payment with your own 4-digit PIN.' },
+  { icon: Zap, title: 'R0 transfer fees', body: 'Sending money to anyone on ZAKA is free. A small fee applies only when you cash in or cash out at a ZAKA merchant.' },
+  { icon: ShieldCheck, title: 'Safe and verified', body: 'Every account is ID-verified, and you approve each payment with your own PIN.' },
   { icon: ArrowUpRight, title: 'Instant transfers', body: 'Money arrives in seconds, any time of day.' },
   { icon: Gift, title: 'R100 welcome bonus', body: 'Start with R100 in your wallet to try it out.' },
-  { icon: Phone, title: 'Works on any phone', body: 'Use the web or dial *384# — no smartphone needed.' },
+  { icon: Phone, title: 'Works on any phone', body: 'Use the web or dial *384*123# — no smartphone needed.' },
 ];
 
 export default function Features() {

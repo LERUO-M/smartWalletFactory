@@ -1,12 +1,13 @@
 import Step from '../Step';
 import Btn from '../Btn';
 import Logo from '../Logo';
+import { USSD_CODE } from '@/lib/wallet';
 import ThemeToggle from '../ThemeToggle';
 
 const FACTS = [
-  ['R0', 'Fees'],
+  ['R0', 'Transfer fees'],
   ['R100', 'Free bonus'],
-  ['*384#', 'Any phone'],
+  [USSD_CODE, 'Any phone'],
 ];
 
 export default function WelcomeStep({ onNext }) {
@@ -19,9 +20,9 @@ export default function WelcomeStep({ onNext }) {
         <Logo size={52} />
         <p className="mt-10 font-mono text-[11px] uppercase tracking-[0.25em] text-zaka-teal">Simple · Secure · ZAR</p>
         <h1 className="mt-4 font-display text-[46px] font-semibold leading-[1.02] tracking-tight">
-          ZAR Smart
+          Money on
           <br />
-          Wallet
+          your phone
         </h1>
         <p className="mt-5 max-w-[18rem] text-lg text-zaka-mute">No bank account needed. You only need this phone.</p>
         <div className="mt-12 grid grid-cols-3 gap-3 border-t border-zaka-line pt-6">
@@ -33,7 +34,7 @@ export default function WelcomeStep({ onNext }) {
           ))}
         </div>
       </div>
-      <Btn onClick={onNext}>Get Started</Btn>
+      <Btn onClick={onNext}>Get started</Btn>
     </Step>
   );
 }

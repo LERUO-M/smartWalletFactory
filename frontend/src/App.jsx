@@ -9,6 +9,7 @@ import CheckBalance from '@/pages/CheckBalance';
 import SendMoney from '@/pages/SendMoney';
 import ClaimFunds from '@/pages/ClaimFunds';
 import WalletAddress from '@/pages/WalletAddress';
+import Verify from '@/pages/Verify';
 import OnboardingPage from '@/pages/Onboarding';
 import ExportPdf from '@/pages/ExportPdf';
 import Login from '@/pages/Login';
@@ -29,7 +30,9 @@ export default function App() {
                 <Route path="/balance" element={<CheckBalance />} />
                 <Route path="/send" element={<SendMoney />} />
                 <Route path="/claim" element={<ClaimFunds />} />
-                <Route path="/address" element={<WalletAddress />} />
+                <Route path="/receive" element={<WalletAddress />} />
+                <Route path="/address" element={<Navigate to="/receive" replace />} />
+                <Route path="/verify" element={<Verify />} />
                 <Route path="/onboarding" element={<OnboardingPage />} />
                 <Route path="/login" element={<Login />} />
               </Route>

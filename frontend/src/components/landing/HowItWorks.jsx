@@ -2,10 +2,10 @@ import { motion } from 'framer-motion';
 import { Smartphone, Gift, ArrowUpRight, Phone } from 'lucide-react';
 
 const STEPS = [
-  { icon: Smartphone, title: 'Create your wallet', body: 'Sign up with your phone number and pick a 4-digit PIN. No paperwork, no bank account.' },
+  { icon: Smartphone, title: 'Create your wallet', body: 'Sign up with your phone number and a 4-digit PIN, then verify your ID with a quick selfie. No bank account needed.' },
   { icon: Gift, title: 'Add money', body: 'Claim your R100 welcome bonus, or ask someone to send you Rands by your phone number.' },
   { icon: ArrowUpRight, title: 'Send & receive', body: 'Move money instantly to anyone with a ZAKA wallet. Just enter their phone number.' },
-  { icon: Phone, title: 'Works on any phone', body: 'Use it here on the web, or dial *384# on any phone — even without internet.' },
+  { icon: Phone, title: 'Works on any phone', body: 'Use it here on the web, or dial *384*123# on any phone — even without internet.' },
 ];
 
 export default function HowItWorks() {

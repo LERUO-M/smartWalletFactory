@@ -26,7 +26,7 @@ export default function PhoneStep({ onNext, onBack }) {
     <Step>
       <TopBar label="Step 1 of 3" onBack={onBack} />
       <form onSubmit={next} className="flex flex-1 flex-col">
-        <Title title="What's your phone number?" sub="People will send you money using this number." />
+        <Title title="What's your phone number?" sub="This is how people will pay you. We'll send payment alerts here by SMS." />
         <Field
           type="tel" inputMode="tel" autoFocus placeholder="082 123 4567"
           value={value} onChange={(e) => { setValue(e.target.value); setError(''); }}

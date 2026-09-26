@@ -21,7 +21,7 @@ export default function Onboarding({ onCreated, onDone }) {
       setWallet(w);
       setStep('done');
     } catch (e) {
-      return e.message || 'Could not create wallet — try again';
+      return e.message || 'We could not create your wallet. Please try again.';
     }
   };
 
@@ -35,14 +35,14 @@ export default function Onboarding({ onCreated, onDone }) {
         {step === 'create' && (
           <PinStep
             key="c" eyebrow="Step 2 of 3" cta="Continue"
-            title="Create a 4-digit PIN to secure your wallet"
-            sub="Use 4 to 6 digits. You'll need it to approve payments."
+            title="Create a PIN"
+            sub="4 digits you'll use to approve every payment. Don't share it with anyone."
             onBack={() => setStep('phone')}
             onSubmit={(p) => { setPin(p); setStep('confirm'); }}
           />
         )}
         {step === 'confirm' && (
-          <PinStep key="cf" eyebrow="Step 3 of 3" cta="Create Wallet" title="Confirm your PIN" onBack={() => setStep('create')} onSubmit={confirm} />
+          <PinStep key="cf" eyebrow="Step 3 of 3" cta="Create wallet" title="Enter your PIN again" onBack={() => setStep('create')} onSubmit={confirm} />
         )}
         {step === 'done' && <CreatedStep key="d" wallet={wallet} onDone={onDone} />}
       </AnimatePresence>

@@ -10,7 +10,7 @@ export default function LandingFooter() {
           <span className="font-display text-lg font-semibold tracking-tight">ZAKA</span>
         </Link>
         <p className="text-center font-mono text-[11px] uppercase tracking-[0.2em] text-zaka-mute">
-          No fees · Also works on *384#
+          Free transfers · Also works on *384*123#
         </p>
         <p className="text-xs text-zaka-mute">© {new Date().getFullYear()} ZAKA</p>
       </div>

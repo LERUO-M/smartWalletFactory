@@ -6,6 +6,7 @@ import CheckBalance from '@/pages/CheckBalance';
 import SendMoney from '@/pages/SendMoney';
 import ClaimFunds from '@/pages/ClaimFunds';
 import WalletAddress from '@/pages/WalletAddress';
+import Verify from '@/pages/Verify';
 import OnboardingPage from '@/pages/Onboarding';
 import Landing from '@/pages/Landing';
 
@@ -15,7 +16,8 @@ const PAGES = [
   { label: 'Check Balance', Comp: CheckBalance },
   { label: 'Send Money', Comp: SendMoney },
   { label: 'Claim Funds', Comp: ClaimFunds },
-  { label: 'Wallet Address', Comp: WalletAddress },
+  { label: 'Receive Money', Comp: WalletAddress },
+  { label: 'Verify Identity', Comp: Verify },
   { label: 'Onboarding', Comp: OnboardingPage },
 ];
 

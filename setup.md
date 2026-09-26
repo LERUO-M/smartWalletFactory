@@ -216,7 +216,7 @@ ZAKA
 4. My Account
 ```
 
-Nothing on USSD or SMS mentions blockchains, addresses or fees. People only see ZAKA, Rand amounts and phone numbers.
+Nothing on USSD or SMS mentions blockchains or addresses. Transfers between ZAKA users have **R0 transfer fees**. ZAKA makes money on cash-ins and cash-outs at merchants, and the web app says so wherever fees come up. People only see ZAKA, Rand amounts and phone numbers.
 
 **Sending never waits for the blockchain.** After the PIN, the backend checks limits and the available balance (on-chain balance minus transfers still in progress), saves the transfer as *pending* with a ULID reference, and replies at once. `services/transferService.js` then submits it and sends the SMS messages. Pending transfers count toward the sender's limits and balance, so a second send can't overspend while the first is still going through.
 
@@ -242,6 +242,14 @@ Only successful outgoing transfers count toward the limits (the welcome bonus an
 
 To get delivery reports, set the SMS delivery callback URL in the Africa's Talking dashboard to `https://<your-host>/api/sms/delivery`.
 
+### Web app (`frontend/`)
+
+The web wallet never shows blockchain details. People see their phone number, balance, verification status and a reference number for each payment. "My Wallet Address" is now **Receive money**, which shows your phone number and a QR code of it.
+
+**Identity verification (Level 1) is required before sending from the web app.** A "Verify your identity" card appears on the dashboard, the balance page and in front of the send flow. The flow at `/verify` has four steps: SA ID number → selfie (uses the camera if there is one) → checks → verified. It is a **mock of Smile ID's Biometric KYC**. `POST /api/kyc/me/smile-id` validates the ID number and upgrades the signed-in user to Level 1. The selfie is never uploaded. To go live, send the ID number and selfie to Smile ID and upgrade the user from Smile ID's result callback instead. `POST /api/tx/send` returns `403` with `code: "kyc_level1_required"` until the user is verified. Receiving money and getting demo money work without verification.
+
+Set `VITE_USSD_CODE` in `frontend/.env` if your USSD code isn't `*384*123#`.
+
 ### New API endpoints
 
 | Endpoint | What it does |
@@ -254,6 +262,7 @@ To get delivery reports, set the SMS delivery callback URL in the Africa's Talki
 | `POST /api/sms/send` `{ to, message }` | Send a one-off SMS (for testing your AT setup) * |
 | `POST /api/sms/delivery` | Africa's Talking delivery report callback |
 | `GET /api/transactions/:phone` | Recent transfers in and out |
+| `POST /api/kyc/me/smile-id` `{ idNumber }` | Web app identity check (mock Smile ID) → Level 1. Needs the web session token |
 
 \* Send the header `x-admin-key: <ADMIN_API_KEY>` when `ADMIN_API_KEY` is set.
 

@@ -6,6 +6,8 @@
 //   GET  /api/kyc/:phone             level, limits, usage today / this month
 //   POST /api/kyc/:phone/id          { idNumber }                    → Level 0  [admin]
 //   POST /api/kyc/:phone/verify      { level?, method, reference? }  → Level 1  [admin]
+//   POST /api/kyc/me/smile-id        { idNumber }  → Level 1 for the signed-in web user
+//                                    (MOCK of Smile ID Biometric KYC – see below)
 //
 // /verify is what a merchant app or the website calls after checking the
 // person's ID in person / online. It texts the user their new limits.
@@ -21,12 +23,46 @@ const smsService = require("../services/smsService");
 const ficaSync   = require("../services/ficaSync");
 const { toE164 } = require("../lib/phone");
 const { requireAdmin } = require("../lib/adminAuth");
+const { requireAuth }  = require("../lib/jwt");
+const { ulid }         = require("../lib/ulid");
 
 function phoneOr400(req, res) {
   const phone = toE164(decodeURIComponent(req.params.phone));
   if (!phone) res.status(400).json({ error: "Invalid phone number" });
   return phone;
 }
+
+/**
+ * Web app identity verification – MOCK of Smile ID Biometric KYC.
+ *
+ * The web app collects the SA ID number and a selfie. In production you would
+ * send both to Smile ID (their web SDK / Biometric KYC job), and upgrade the
+ * user from Smile ID's result callback. For the hackathon we validate the ID
+ * number (format, date of birth, checksum, not used by another phone) and
+ * approve immediately. The selfie is never uploaded.
+ */
+router.post("/me/smile-id", requireAuth, (req, res) => {
+  const phoneNumber = req.user.phone;
+  const idNumber = String(req.body.idNumber || "").replace(/\s+/g, "");
+
+  if (!kycService.validateSaId(idNumber).ok) return res.status(400).json({ error: "invalid" });
+  if (kycService.idInUse(idNumber, phoneNumber)) return res.status(409).json({ error: "id_in_use" });
+
+  const idResult = kycService.setIdNumber(phoneNumber, idNumber, "smile_id");
+  if (!idResult.ok) return res.status(400).json({ error: idResult.reason });
+
+  const reference = "SMILE-MOCK-" + ulid();
+  const result = kycService.setLevel(phoneNumber, 1, "smile_id", reference);
+  if (!result.ok) return res.status(400).json({ error: result.reason });
+
+  smsService.sendInBackground(
+    phoneNumber,
+    smsService.templates.kycComplete(kycService.limitSummary(result.status)),
+    { category: "kyc" }
+  );
+  ficaSync.syncApproval(phoneNumber, true, 0);
+  res.json({ phoneNumber, provider: "smile_id (mock)", ...result.status });
+});
 
 router.get("/tiers", (req, res) => {
   res.json({ tiers: Object.values(kycService.getTiers()) });

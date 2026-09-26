@@ -16,7 +16,7 @@ export default function Processing({ label = 'Processing' }) {
         <div className="absolute inset-5 animate-spin rounded-full border-2 border-zaka-line border-t-zaka-teal" />
       </div>
       <p className="mt-10 font-display text-2xl tracking-tight">{label}</p>
-      <p className="mt-2 text-sm text-zaka-mute">This takes a few seconds. No fees are charged.</p>
+      <p className="mt-2 text-sm text-zaka-mute">This takes a few seconds.</p>
     </Step>
   );
 }

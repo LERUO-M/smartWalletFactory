@@ -4,7 +4,7 @@ import TopBar from '../TopBar';
 import Title from '../Title';
 import Field from '../Field';
 import Btn from '../Btn';
-import { normalizePhone, lookupRecipient } from '@/lib/wallet';
+import { normalizePhone, lookupRecipient, USSD_CODE } from '@/lib/wallet';
 
 export default function SendRecipient({ wallet, onNext }) {
   const [value, setValue] = useState('');
@@ -19,7 +19,7 @@ export default function SendRecipient({ wallet, onNext }) {
     setBusy(true);
     const r = await lookupRecipient(phone);
     setBusy(false);
-    if (!r) return setError('Recipient has not registered yet — ask them to dial *384# first');
+    if (!r) return setError(`This number isn't on ZAKA yet. Ask them to dial ${USSD_CODE} to join.`);
     onNext(r);
   };
 
@@ -27,11 +27,11 @@ export default function SendRecipient({ wallet, onNext }) {
     <Step>
       <TopBar label="Send · 1 of 3" />
       <form onSubmit={next} className="flex flex-1 flex-col">
-        <Title title="Enter recipient phone number" />
+        <Title title="Who are you paying?" sub="Enter their phone number." />
         <Field
           type="tel" inputMode="tel" autoFocus placeholder="082 123 4567"
           value={value} onChange={(e) => { setValue(e.target.value); setError(''); }}
-          error={error} helper="They must have a ZAR Wallet to receive funds"
+          error={error} helper="They need a ZAKA wallet (web or USSD)"
         />
         <Btn type="submit" className="mt-auto" disabled={busy || !value}>{busy ? 'Checking…' : 'Next'}</Btn>
       </form>

@@ -4,9 +4,9 @@ import { useAuth } from '@/lib/AuthContext';
 import Logo from '@/components/zaka/Logo';
 
 const STATS = [
-  ['R0', 'Fees'],
+  ['R0', 'Transfer fees'],
   ['R100', 'Welcome bonus'],
-  ['*384#', 'Any phone'],
+  ['*384*123#', 'Any phone'],
 ];
 
 export default function Hero() {
@@ -26,7 +26,7 @@ export default function Hero() {
             Money on your phone. <br className="hidden sm:block" /> No bank account needed.
           </h1>
           <p className="mt-6 max-w-md text-lg text-zaka-mute">
-            ZAKA is a Rand wallet that works on any phone. Send and receive money instantly — no fees, no apps to install, no bank account required.
+            ZAKA is a Rand wallet that works on any phone. Send and receive money instantly with R0 transfer fees — no apps to install, no bank account required.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <Link to={primary.to} className="inline-flex h-14 items-center justify-center rounded-2xl bg-zaka-cream px-8 font-medium text-zaka-ink transition hover:opacity-90">
@@ -72,15 +72,15 @@ function PhoneMock() {
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-zaka-mute">Available balance</p>
         <p className="mt-2 font-display text-3xl font-semibold">R100.00</p>
         <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-zaka-teal/15 px-2.5 py-1 text-[11px] text-zaka-teal">
-          <span className="h-1.5 w-1.5 rounded-full bg-zaka-teal" /> Active
+          <span className="h-1.5 w-1.5 rounded-full bg-zaka-teal" /> Verified
         </span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
-        {['Check balance', 'Send money', 'Claim funds', 'My address'].map((t) => (
+        {['Balance', 'Send money', 'Demo money', 'Receive money'].map((t) => (
           <div key={t} className="rounded-xl border border-zaka-line bg-zaka-panel/60 p-3 text-xs">{t}</div>
         ))}
       </div>
-      <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zaka-mute">No fees · *384#</p>
+      <p className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zaka-mute">R0 transfer fees · *384*123#</p>
     </div>
   );
 }

@@ -232,15 +232,25 @@ router.post("/tx/claim", requireAuth, async (req, res) => {
     const amountWei     = ethers.parseEther(String(amountZAR));
     const callData      = walletService.encodeFaucetClaim(walletAddress, amountWei);
 
-    const userOpHash = await userOpService.sendUserOperation({
-      senderWalletAddress:  walletAddress,
-      senderPhoneNumber:    phone,
-      senderOwnerAddress:   ownerAddress,
-      senderSigner:         signer,
-      callData,
+    const { id: transferId, reference } = kycService.recordTransfer({
+      kind: "faucet", recipientPhone: phone, amountCents: Math.round(Number(amountZAR) * 100), status: "pending",
     });
+    let userOpHash;
+    try {
+      userOpHash = await userOpService.sendUserOperation({
+        senderWalletAddress:  walletAddress,
+        senderPhoneNumber:    phone,
+        senderOwnerAddress:   ownerAddress,
+        senderSigner:         signer,
+        callData,
+      });
+    } catch (err) {
+      kycService.updateTransfer(transferId, { status: "failed", error: err.message.slice(0, 500) });
+      throw err;
+    }
+    kycService.updateTransfer(transferId, { status: "success", opHash: userOpHash });
 
-    res.json({ userOpHash, walletAddress });
+    res.json({ userOpHash, walletAddress, reference });
   } catch (err) {
     console.error("[API /tx/claim]", err.message);
     res.status(500).json({ error: err.message });
@@ -268,6 +278,17 @@ router.post("/tx/send", requireAuth, async (req, res) => {
 
     const amountCents = Math.round(Number(amountZAR) * 100);
     if (!(amountCents > 0)) return res.status(400).json({ error: "Invalid amount" });
+
+    // The web app requires full identity verification (Level 1) before sending.
+    // (USSD users can send small amounts at Level 0.)
+    const kycNow = kycService.getStatus(phone);
+    if (!kycNow || kycNow.level === null || kycNow.level < 1) {
+      return res.status(403).json({
+        error: "Verify your identity before sending money",
+        code: "kyc_level1_required",
+        kyc: kycNow,
+      });
+    }
 
     // Tiered KYC limits
     const limit = kycService.checkSend(phone, amountCents);

@@ -8,8 +8,8 @@ export default function SendSummary({ amount, phone }) {
         <span className="font-semibold">{formatPhone(phone)}</span>
       </p>
       <div className="mt-3 flex justify-between border-t border-zaka-line pt-3 text-sm">
-        <span className="text-zaka-mute">Fees</span>
-        <span className="text-zaka-teal">Free</span>
+        <span className="text-zaka-mute">Transfer fee</span>
+        <span className="text-zaka-teal">R0.00</span>
       </div>
     </div>
   );
