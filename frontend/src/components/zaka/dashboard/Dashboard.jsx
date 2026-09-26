@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Wallet, ArrowUpRight, Gift, QrCode, LogOut, ChevronRight } from 'lucide-react';
 import Step from '../Step';
 import Logo from '../Logo';
@@ -6,6 +6,7 @@ import BalanceCard from './BalanceCard';
 import ActionTile from './ActionTile';
 import ThemeToggle from '../ThemeToggle';
 import { formatPhone, shortAddr } from '@/lib/wallet';
+import { useAuth } from '@/lib/AuthContext';
 
 const ACTIONS = [
   { n: '01', icon: Wallet, label: 'Check Balance', sub: 'See what you have', to: '/balance' },
@@ -15,6 +16,12 @@ const ACTIONS = [
 ];
 
 export default function Dashboard({ wallet }) {
+  const navigate = useNavigate();
+  const { logout } = useAuth();
+  const handleLogout = async () => {
+    await logout();
+    navigate('/', { replace: true });
+  };
   return (
     <Step>
       <header className="mb-8 flex items-center justify-between">
@@ -27,9 +34,9 @@ export default function Dashboard({ wallet }) {
         </div>
         <div className="flex items-center gap-1">
           <ThemeToggle />
-          <Link to="/" aria-label="Log out" className="flex h-10 w-10 items-center justify-center rounded-full text-zaka-mute transition hover:bg-zaka-cream/5 hover:text-zaka-cream">
+          <button type="button" onClick={handleLogout} aria-label="Log out" className="flex h-10 w-10 items-center justify-center rounded-full text-zaka-mute transition hover:bg-zaka-cream/5 hover:text-zaka-cream">
             <LogOut className="h-4 w-4" />
-          </Link>
+          </button>
         </div>
       </header>
       <BalanceCard wallet={wallet} />

@@ -68,6 +68,15 @@ export async function loginWallet(phone, pin) {
   return shape(res);
 }
 
+export async function logoutWallet() {
+  try {
+    await api('/api/auth/logout', { method: 'POST', auth: true });
+  } catch {
+    // Best-effort — clear the client session even if the server rejects the token.
+  }
+  setToken(null);
+}
+
 // Kept for backward compatibility with the UI. The mock accepted a wallet;
 // we now just re-authenticate to verify the PIN.
 export async function verifyPin(wallet, pin) {

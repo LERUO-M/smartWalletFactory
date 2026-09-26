@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { getToken, setToken as persistToken } from './api';
-import { loginWallet, createWallet } from './wallet';
+import { loginWallet, createWallet, logoutWallet } from './wallet';
 
 const KEY = 'zaka-session';
 const AuthCtx = createContext({ isAuthenticated: false });
@@ -17,6 +18,7 @@ function loadSession() {
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(loadSession);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (session) localStorage.setItem(KEY, JSON.stringify(session));
@@ -35,9 +37,11 @@ export function AuthProvider({ children }) {
     return w;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await logoutWallet();
     persistToken(null);
     setSession(null);
+    queryClient.removeQueries({ queryKey: ['wallet'] });
   };
 
   const updateSession = (patch) => setSession((s) => (s ? { ...s, ...patch } : s));
