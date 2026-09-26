@@ -48,22 +48,13 @@ function getProvider() {
   return _provider;
 }
 
-// ── Normalise phone number ────────────────────────────────────────────────────
+const { toE164 } = require("../lib/phone");
 
-/**
- * Normalise South African phone numbers to E.164 format (+27...).
- * Africa's Talking delivers numbers in +27... format already;
- * users in USSD menus may type 082... or 27...
- *
- * @param {string} phone
- * @returns {string} normalised E.164 number
- */
-function normalisePhone(phone) {
-  let p = phone.replace(/\s+/g, "").replace(/[^+\d]/g, "");
-  if (p.startsWith("0") && p.length === 10) return "+27" + p.slice(1);
-  if (p.startsWith("27") && !p.startsWith("+")) return "+" + p;
-  return p;
-}
+// ── Alias for USSD module ─────────────────────────────────────────────────────
+// Africa's Talking delivers numbers already in +27... format; toE164 handles
+// the cases where users type 082... inside USSD menus.
+const normalisePhone = toE164;
+
 
 // ── Main webhook handler ──────────────────────────────────────────────────────
 

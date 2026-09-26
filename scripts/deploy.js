@@ -25,11 +25,16 @@ const ENTRY_POINT_ADDRESS = "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789";
 /** Amount of ETH deposited into the EntryPoint for gas sponsorship (Sepolia). */
 const PAYMASTER_DEPOSIT_ETH  = "0.05";
 
-/** Paymaster stake amount (required by ERC-4337 for paymasters). */
-const PAYMASTER_STAKE_ETH    = "0.01";
+/**
+ * Paymaster stake amount.
+ * ERC-4337 bundlers (Alchemy, Pimlico, Stackup) enforce a MINIMUM of 0.1 ETH.
+ * Error seen when too low: "entity stake/unstake delay too low" (code -32502)
+ * Ref: https://eips.ethereum.org/EIPS/eip-4337#reputation-scoring-and-throttlingbanning-for-global-entities
+ */
+const PAYMASTER_STAKE_ETH    = "0.1";   // ← must be ≥ 0.1 ETH for bundler acceptance
 
 /** Minimum delay before the stake can be withdrawn (seconds). */
-const PAYMASTER_UNSTAKE_DELAY = 86400; // 1 day
+const PAYMASTER_UNSTAKE_DELAY = 86400; // 24 hours — bundler minimum
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

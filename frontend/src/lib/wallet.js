@@ -11,18 +11,26 @@ export const shortAddr = (a, s = 8, e = 6) => (a ? `${a.slice(0, s)}...${a.slice
 export const zar = (n) =>
   'R' + (Math.round(Number(n || 0) * 100) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 
-// UI works in local SA format ("0821234567"); backend uses "+27821234567".
+// normalizePhone: converts any SA input to E.164 "+27XXXXXXXXX" for backend calls.
+// Returns null if the input cannot be interpreted as a valid SA number.
 export function normalizePhone(input) {
-  const d = String(input).replace(/\D/g, '');
-  const local = d.startsWith('27') && d.length === 11 ? '0' + d.slice(2) : d;
-  return /^0\d{9}$/.test(local) ? local : null;
+  const d = String(input || '').replace(/\D/g, '');
+  // Local: 0821234567 → +27821234567
+  if (/^0\d{9}$/.test(d)) return '+27' + d.slice(1);
+  // Already has country code without +: 27821234567 → +27821234567
+  if (/^27\d{9}$/.test(d)) return '+' + d;
+  // Already E.164: +27821234567
+  if (/^\+27\d{9}$/.test(input)) return input;
+  return null;
 }
 
+// formatPhone: converts E.164 "+27821234567" to display format "082 123 4567"
 export const formatPhone = (p) => {
   if (!p) return '';
   const local = p.startsWith('+27') ? '0' + p.slice(3) : p;
   return `${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
 };
+
 
 // Parse the backend's "R1 234.56" into a JS number.
 const parseZAR = (s) => Number(String(s || '0').replace(/[^\d.]/g, '')) || 0;

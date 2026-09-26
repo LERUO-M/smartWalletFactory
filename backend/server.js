@@ -107,7 +107,7 @@ app.listen(PORT, () => {
     "RPC_URL", "BUNDLER_RPC_URL", "FACTORY_ADDRESS",
     "PAYMASTER_ADDRESS", "ZAR_TOKEN_ADDRESS",
     "PAYMASTER_SIGNER_PRIVATE_KEY", "KEY_ENCRYPTION_SECRET",
-    "ENTRY_POINT_ADDRESS",
+    "ENTRY_POINT_ADDRESS", "JWT_SECRET",
   ];
   const missing = required.filter(k => !process.env[k]);
   if (missing.length > 0) {

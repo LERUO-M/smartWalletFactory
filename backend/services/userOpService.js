@@ -92,15 +92,41 @@ function packPaymasterAndData(paymasterAddress, validUntil, validAfter, sig) {
 }
 
 /**
- * Fetch current Sepolia gas prices from the RPC provider.
+ * Fetch current gas prices from the RPC provider and clamp to bundler minimums.
+ *
+ * Sepolia's RPC routinely returns maxPriorityFeePerGas as low as 1,000,000 wei
+ * (0.001 gwei) because validators don't need tips on a free testnet.  ERC-4337
+ * bundlers (Alchemy, Pimlico, Stackup) enforce their own floors, typically
+ * 0.1 gwei (100,000,000 wei) for priority and 1.5–2× that for maxFee.
+ * We take whichever is larger: what the network reports vs. the bundler floor.
  */
 async function getGasFees() {
+  // Bundler-enforced minimums (conservative — works with Alchemy, Pimlico, Stackup)
+  const MIN_PRIORITY = ethers.parseUnits("0.1",  "gwei"); // 100_000_000 wei
+  const MIN_MAX_FEE  = ethers.parseUnits("0.15", "gwei"); // 150_000_000 wei
+
   const feeData = await rpcProvider.getFeeData();
-  return {
-    maxFeePerGas:        feeData.maxFeePerGas         ?? ethers.parseUnits("30", "gwei"),
-    maxPriorityFeePerGas: feeData.maxPriorityFeePerGas ?? ethers.parseUnits("2",  "gwei"),
-  };
+
+  // Use the larger of (network value, minimum floor) so we never go below the floor
+  // but also don't overpay when the network is congested
+  const maxPriorityFeePerGas = bigMax(
+    feeData.maxPriorityFeePerGas ?? MIN_PRIORITY,
+    MIN_PRIORITY
+  );
+  const maxFeePerGas = bigMax(
+    feeData.maxFeePerGas ?? MIN_MAX_FEE,
+    MIN_MAX_FEE,
+    maxPriorityFeePerGas  // maxFee must be >= priority fee
+  );
+
+  return { maxFeePerGas, maxPriorityFeePerGas };
 }
+
+/** Return the largest of the provided BigInt values. */
+function bigMax(...vals) {
+  return vals.reduce((a, b) => (b > a ? b : a));
+}
+
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
