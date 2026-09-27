@@ -4,7 +4,7 @@ A browser stand-in for Africa's Talking. Feature phones dial a USSD code, the si
 POSTs to the backend's `/ussd` webhook exactly like Africa's Talking does, and shows every SMS
 the backend sends, plus each phone's balance and KYC limits.
 
-The page is just the phones, centered, with an account panel underneath. There is no
+The page is just the phones, centered, with an account panel underneath and a Scenarios drawer. There is no
 settings bar: the backend URL is fixed when the app is built.
 
 ## Run it
@@ -72,6 +72,10 @@ All backend calls live in `src/api/index.ts`.
   "Continue sending R50.00 to 0831234567? 1. Yes 2. No".
 - **Masking:** inputs that answer a prompt mentioning "PIN" show as `••••`; SA ID numbers show as
   `900101•••••86`.
+- **Scenarios** (button next to "Add phone"): scripted inputs replayed on a phone at about 600ms
+  per step, with an optional "final screen contains" check. Pick the phone under "Run on" first.
+  Each line is one step, and the first must be `dial` (or `dial *120*55#`). Scenarios are saved in
+  localStorage and can be imported and exported as JSON. **Reset** restores the built-in set.
 - Idle sessions end after 60 seconds, like a real network.
 
 **Test SA ID numbers** (valid format and checksum, not real people): `9001015009086`,
@@ -86,6 +90,6 @@ src/api/mock.ts                in-browser fake backend (no longer reachable from
 src/store.tsx                  settings, phones, wallet cache, SMS polling
 src/components/Phone.tsx       the handset and the USSD session engine
 src/components/WalletPanel.tsx balance, KYC level and limits, Validate
-src/components/Scenarios.tsx   scripted-flow runner (not currently shown on the page)
+src/components/Scenarios.tsx   scenario runner drawer
 standalone.html                older prebuilt single-file build (still has the top bar and Mock mode)
 ```
