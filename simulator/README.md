@@ -76,6 +76,7 @@ All backend calls live in `src/api/index.ts`.
   per step, with an optional "final screen contains" check. Pick the phone under "Run on" first.
   Each line is one step, and the first must be `dial` (or `dial *120*55#`). Scenarios are saved in
   localStorage and can be imported and exported as JSON. **Reset** restores the built-in set.
+- **Light / Dark** (next to Scenarios) switches the theme. The choice is saved in this browser.
 - Idle sessions end after 60 seconds, like a real network.
 
 **Test SA ID numbers** (valid format and checksum, not real people): `9001015009086`,
