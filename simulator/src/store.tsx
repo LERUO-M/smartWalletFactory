@@ -8,8 +8,11 @@ import { load, save, uid } from "./lib/util";
 
 const K = { settings: "ussdsim.settings", phones: "ussdsim.phones", scenarios: "ussdsim.scenarios" };
 
+// The backend URL is fixed at build time (there is no URL field in the UI)
+const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000").trim().replace(/\/+$/, "");
+
 const DEFAULT_SETTINGS: Settings = {
-  baseUrl: "http://localhost:3000",
+  baseUrl: API_URL,
   mock: false,
   theme: "dark",
   muted: false,
@@ -99,7 +102,13 @@ export function useStore() {
 }
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettingsState] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...load(K.settings, {}) }));
+  const [settings, setSettingsState] = useState<Settings>(() => ({
+    ...DEFAULT_SETTINGS,
+    ...load(K.settings, {}),
+    // Older saved settings may hold a pasted URL or mock mode, which can no longer be changed
+    baseUrl: API_URL,
+    mock: false,
+  }));
   const [phones, setPhones] = useState<PhoneConfig[]>(() => {
     const p = load<PhoneConfig[]>(K.phones, DEFAULT_PHONES);
     return p.length ? p : DEFAULT_PHONES;
