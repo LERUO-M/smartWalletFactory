@@ -6,28 +6,19 @@ This is an ERC-4337 Account Abstraction project with smart contracts (Hardhat/So
 
 ## Just want to see the USSD flow? (2 minutes, no blockchain setup)
 
-The simulator has a **Mock mode** with a fake backend built in, so you can try the whole menu without deploying anything:
+Open `simulator/standalone.html` directly in your browser. It's an older single-file build of the simulator that still has **Mock mode**, a fake backend built in:
 
-```bash
-cd simulator
-npm install
-npm run dev
-```
+1. Turn on **Mock mode** in the top bar. A gold banner confirms it's on.
+2. Click the first phone, type `*384*123#` and press the green key (or Enter).
+3. Create a 4-digit PIN (e.g. `1234`), confirm it, then enter a test SA ID number such as `9001015009086`. Dial again to see the main menu.
 
-1. Open http://localhost:5173.
-2. Turn on **Mock mode** in the top bar. A gold banner confirms it's on.
-3. Click the first phone, type `*384*123#` and press the green key (or Enter).
-4. Create a 4-digit PIN (e.g. `1234`), confirm it, then enter a test SA ID number such as `9001015009086`. Dial again to see the main menu.
-
-Or skip `npm install` altogether: open `simulator/standalone.html` directly in your browser.
-
-To run against the real backend and Sepolia, follow Steps 1–8 below.
+The current simulator (`npm run dev` in `simulator/`) always talks to a real backend. To run against the real backend and Sepolia, follow Steps 1–8 below.
 
 ---
 
 ## Prerequisites
 
-- **Node.js** >= 18
+- **Node.js** >= 20
 - **npm**
 - **Git**
 - A **Sepolia RPC endpoint** (free tier from [Alchemy](https://alchemy.com) or Infura)
@@ -157,12 +148,9 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. Check the top bar:
+Open http://localhost:5173. The simulator talks to `http://localhost:3000`. To point it somewhere else, start it with `VITE_API_URL=https://… npm run dev`.
 
-- The dot next to the backend URL (`http://localhost:3000` by default) should be **green**. Red means the simulator can't reach the backend (see Troubleshooting).
-- The **Wallets / Fees / ZAKA** chips should be green. A red chip means `FACTORY_ADDRESS`, `PAYMASTER_ADDRESS` or `ZAR_TOKEN_ADDRESS` is missing from `backend/.env` (hover a chip to see which).
-- The **SMS** chip says *live*, *sandbox* or *simulated*, depending on your Africa's Talking settings.
-- **Mock mode** must be **off**. Otherwise you're talking to the fake in-browser backend, not your server.
+Check that the backend is reachable before dialling: `curl http://localhost:3000/api/health` should return `"status": "ok"`, and the backend's startup log should show no `⚠️ Missing .env variables` line.
 
 ### Try it end to end
 
@@ -170,13 +158,11 @@ Open http://localhost:5173. Check the top bar:
 2. **Register User B** the same way on the second phone. Each ID number can only be used once, so use a different one.
 3. **Send ZAKA.** On phone A, dial again, choose `2`, then enter `0831234567` (User B), `50`, and the PIN. The reply comes back straight away: "Sending R50.00 to 0831234567. You will receive an SMS from <SHORT_CODE> when funds are sent", with a reference such as `01J8ZK3V9Q7W2R5T6Y8B4N1M0C` (a ULID). The transfer is then submitted in the background. When it completes, both balances update, phone A gets "ZAKA: you have sent R50.00 to 0831234567. Ref: …", and phone B gets "ZAKA notification: you have received R50.00 from +27821234567." Press **Read** on each phone to see them.
 4. **Hit the limit.** New users are on **Level 0** (ID number only): R500 a day, R10,000 a month. On phone A, try to send `600`. You'll get "Sorry, this is over your daily limit", plus an SMS telling you how to unlock more.
-5. **Complete validation.** In the Account panel, click **Validate** (this plays the merchant or website). User A moves to **Level 1** (R25,000/day, R100,000/month) and gets an SMS confirming it.
-
-Or open **Scenarios** in the top bar and run "Register A", "Register B", "A sends R50 to B" and "A goes over the R500 daily limit". Choose the phone under "Run on" first. If you used the simulator before this update, click **Reset** in the Scenarios drawer to load the new scenarios (registration now asks for an ID number).
+5. **Complete validation.** In the Account panel, click **Validate** (this plays the merchant or website). User A moves to **Level 1** (R25,000/day, R100,000/month) and gets an SMS confirming it. The simulator can't send an admin key, so this only works when `ADMIN_API_KEY` isn't set. Otherwise use the `curl` command under [New API endpoints](#new-api-endpoints).
 
 **Test SA ID numbers** (valid format and checksum, not real people): `9001015009086`, `8505055800080`, `9503120123082`.
 
-The **SMS** tab in the inspector lists every SMS the backend sent, with its Africa's Talking status, message id and cost.
+`GET http://localhost:3000/api/sms` lists every SMS the backend sent, with its Africa's Talking status, message id and cost.
 
 ### Controls
 
@@ -188,15 +174,14 @@ The **SMS** tab in the inspector lists every SMS the backend sent, with its Afri
 | Delete a character | Backspace | `C` |
 | Scroll a long menu | ↑ / ↓ | arrow keys |
 
-The **Session inspector** in the middle column logs every request and response. Expand an entry to see the JSON body or to use **Copy as cURL**. PINs and ID numbers are always masked on screen.
+PINs and ID numbers are always masked on screen.
 
 ### Other ways to run the simulator
 
-- **No npm install:** open `simulator/standalone.html` directly in a browser.
-- **Served by the backend:** copy it to `backend/public/index.html`. The backend serves the `public/` folder, so the simulator loads at http://localhost:3000.
-- **Through ngrok:** paste your `https://xxxx.ngrok-free.app` URL into the backend URL field. The simulator adds ngrok's browser-warning header for you.
+- **No npm install:** open `simulator/standalone.html` directly in a browser. It's an older build with the top bar, Mock mode and the session inspector.
+- **Through ngrok:** start the simulator with `VITE_API_URL=https://xxxx.ngrok-free.app npm run dev`. It adds ngrok's browser-warning header for you.
 
-Settings, phones and scenarios are saved in your browser (localStorage).
+Phones are saved in your browser (localStorage).
 
 ---
 
@@ -325,8 +310,7 @@ npx hardhat verify --network sepolia <PAYMASTER_ADDRESS> <ENTRY_POINT_ADDRESS> <
 
 | Symptom | Fix |
 |---|---|
-| Red dot in the top bar | Backend isn't running or the URL is wrong. Check that `curl http://localhost:3000/api/health` works. |
-| Every dial shows "Connection problem or invalid MMI code" | Open the Session inspector. An `ERR` entry gives the reason: network error, HTTP 500 or a 30s timeout. For HTTP 500, check the backend terminal. |
+| Every dial shows "Connection problem or invalid MMI code" | The backend isn't reachable, returned an error, or took over 30s. Check that `curl <backend>/api/health` works and that `VITE_API_URL` was set when the simulator was built. For HTTP 500, check the backend terminal. |
 | "Sorry, something went wrong" on the phone | The backend threw an error. Usually an `.env` value is missing (`RPC_URL`, `KEY_ENCRYPTION_SECRET`, …). The backend prints missing variables at startup. |
 | Balance stays at R 0.00 after registering | The welcome bonus UserOp failed. Check the backend logs for `[WELCOME BONUS]`, and that the paymaster still has ETH deposited. You can claim manually with menu option `3`. |
 | "… is not on ZAKA yet" | Register the recipient's phone first. |
@@ -335,8 +319,7 @@ npx hardhat verify --network sepolia <PAYMASTER_ADDRESS> <ENTRY_POINT_ADDRESS> <
 | "That ID number is not valid" | It must be 13 digits with a real date of birth and a valid checksum. Use one of the test ID numbers above. |
 | "This ID number is already linked to another phone" | Each ID can be used on one phone only. Use a different test ID. |
 | SMS show as *simulated* | `AT_USERNAME` / `AT_API_KEY` aren't set in `backend/.env`. That's fine for local testing. |
-| SMS show as *failed* | Expand the SMS in the inspector's SMS tab to see Africa's Talking's error. Check the API key, that `SHORT_CODE` belongs to your account, and (for premium short codes) `AT_SMS_KEYWORD`. |
-| **Validate** says "Missing or invalid x-admin-key" | Put the same value as `ADMIN_API_KEY` into the simulator's Settings → Admin key. |
-| Scenarios fail at the ID step | Click **Reset** in the Scenarios drawer to load the updated scenarios. |
+| SMS show as *failed* | Check the `error` field in `GET /api/sms` for Africa's Talking's error. Check the API key, that `SHORT_CODE` belongs to your account, and (for premium short codes) `AT_SMS_KEYWORD`. |
+| **Validate** says "Missing or invalid x-admin-key" | The backend has `ADMIN_API_KEY` set and the simulator can't send it. Validate with `curl` and the `x-admin-key` header instead. |
 | Phone numbers | Edit a phone's number or nickname above the handset. `082…`, `27…` and `+27…` formats all work. |
 | Wallet panel shows a phone as unregistered, but it worked before | The backend keeps users in `backend/data/users.db`. Deleting that file resets everyone. |

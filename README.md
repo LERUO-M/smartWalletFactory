@@ -1,36 +1,131 @@
-# SA Smart Wallet Factory
+# ZAKA: SA Smart Wallet Factory
 
-> **ERC-4337 Account-Abstraction wallet system for South African users — Sepolia testnet**
+> **Digital Rands for any phone. ZAKA runs on USSD and SMS for feature phones and a web wallet for smartphones, and settles on ERC-4337 smart wallets on Sepolia.**
 
-A full-stack smart-wallet infrastructure built on the [eth-infinitism ERC-4337](https://github.com/eth-infinitism/account-abstraction) standard. Users transact with ZAR stablecoins without ever holding ETH for gas. A guardian-based social recovery system ensures no user permanently loses wallet access. A layered FICA/KYC compliance framework (the [Financial Intelligence Centre Act](https://www.fic.gov.za)) integrates on-chain enforcement hooks with an off-chain identity oracle.
+People dial `*384*123#`, set a PIN, enter their SA ID number and have a wallet in about 30 seconds. They send ZAKA to other phone numbers, get SMS confirmations, and never see a blockchain, a wallet address or a gas fee. Underneath, each person has an [ERC-4337](https://github.com/eth-infinitism/account-abstraction) smart wallet, a paymaster sponsors all gas, and tiered KYC limits (aligned with [FICA](https://www.fic.gov.za)) cap what each account can move.
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Architecture](#architecture)
-3. [Project Structure](#project-structure)
-4. [Contract Breakdowns](#contract-breakdowns)
-   - [IKYCRegistry.sol](#ikyregistrysol)
-   - [FICARegistry.sol](#ficaregistry-sol)
-   - [SAWallet.sol](#sawallets-ol)
-   - [SAWalletFactory.sol](#sawalletfactorysol)
-   - [ZARPaymaster.sol](#zarpaymasters-ol)
-5. [Script Breakdowns](#script-breakdowns)
-   - [scripts/deploy.js](#scriptsdeploy-js)
-   - [scripts/signUserOp.js](#scriptssignuseropjs)
-6. [Configuration](#configuration)
-7. [Getting Started](#getting-started)
-8. [ERC-4337 Transaction Lifecycle](#erc-4337-transaction-lifecycle)
-9. [Social Recovery Walkthrough](#social-recovery-walkthrough)
-10. [FICA / KYC Integration Guide](#fica--kyc-integration-guide)
-11. [Security Considerations](#security-considerations)
-12. [Dependencies](#dependencies)
+1. [What's in this repo](#whats-in-this-repo)
+2. [Running and deploying](#running-and-deploying)
+3. [Security and reliability design](#security-and-reliability-design)
+   - [SIM-swap attacks](#1-sim-swap-attacks)
+   - [USSD session timeouts](#2-ussd-session-timeouts)
+   - [KYC without friction](#3-kyc-without-friction)
+4. [Smart contracts](#smart-contracts)
+   - [Overview](#overview)
+   - [Architecture](#architecture)
+   - [Contract Breakdowns](#contract-breakdowns)
+   - [Script Breakdowns](#script-breakdowns)
+   - [Configuration](#configuration)
+   - [Getting Started](#getting-started)
+   - [ERC-4337 Transaction Lifecycle](#erc-4337-transaction-lifecycle)
+   - [Social Recovery Walkthrough](#social-recovery-walkthrough)
+   - [FICA / KYC Integration Guide](#fica--kyc-integration-guide)
+   - [Security Considerations](#security-considerations)
+   - [Dependencies](#dependencies)
 
 ---
 
-## Overview
+## What's in this repo
+
+| Part | Folder | What it is | Docs |
+|---|---|---|---|
+| Smart contracts | `contracts/`, `scripts/`, `test/` | `SAWallet` (ERC-4337 account), `SAWalletFactory` (CREATE2), `ZARPaymaster` (gas sponsorship), `FICARegistry`, `MockZAR` (the ZAKA token). Deployed and verified on Sepolia | [below](#smart-contracts) |
+| Backend | `backend/` | Express + SQLite. USSD menu (Africa's Talking webhook), SMS, KYC tiers and limits, background transfers, REST API for the web apps | [backend/README.md](backend/README.md) |
+| Web wallet | `frontend/` | React app: landing page, sign-up/login, balance, send, receive (QR), identity check (mock Smile ID) | [frontend/README.md](frontend/README.md) |
+| USSD simulator | `simulator/` | Feature phones in the browser that call the backend exactly like Africa's Talking, with SMS inboxes and an account panel | [simulator/README.md](simulator/README.md) |
+
+```
+smartWalletFactory/
+├── contracts/            Solidity (OpenZeppelin v4 + account-abstraction v0.6)
+├── scripts/              deploy.js, verify.js, stakePaymaster.js, signUserOp.js
+├── test/                 SAWallet.test.js
+├── backend/              ZAKA server (USSD, SMS, KYC, transfers, API)
+├── frontend/             ZAKA web wallet
+├── simulator/            USSD simulator
+├── setup.md              full local setup walkthrough
+└── hardhat.config.js
+```
+
+**What people get:**
+
+- **USSD menu:** 1. Check Balance, 2. Send ZAKA, 3. Claim R100 Demo ZAKA, 4. My Account. Shortcut dialling (`*384*123*2*0831234567*50#`) and resuming dropped sessions.
+- **SMS:** on receiving money, on every completed or failed send (with a ULID reference), on validation, and when a limit is reached.
+- **KYC tiers:** Level 0 (ID number on USSD) allows R500 a day and R10,000 a month. Level 1 (validated at a merchant or on the website) allows R25,000 a day and R100,000 a month.
+- **R0 transfer fees** between ZAKA users. Gas is sponsored by the paymaster.
+
+---
+
+## Running and deploying
+
+- **Locally:** follow [setup.md](setup.md). It covers deploying the contracts, configuring and starting the backend, and running the simulator.
+- **Hosted (Railway):** three services from this repo.
+
+| Service | Root Directory | Start | Needs |
+|---|---|---|---|
+| backend | `backend` | `npm start` | A volume at `/app/data` (the SQLite database), all variables from `backend/.env.example` |
+| frontend | `frontend` | `npm start` | `VITE_API_URL=https://<backend-domain>` |
+| simulator | `simulator` | `npm start` | `VITE_API_URL=https://<backend-domain>` |
+
+Then set the Africa's Talking USSD callback to `https://<backend-domain>/ussd` and the SMS delivery report URL to `https://<backend-domain>/api/sms/delivery`. Node 20+ is required.
+
+---
+
+## Security and reliability design
+
+These are the three questions that matter most for a USSD money product: what happens when someone's SIM is stolen, what happens when the network cuts a session, and how to do KYC without losing people at sign-up. Each item is marked **Built** (in this repo today) or **Planned**.
+
+### 1. SIM-swap attacks
+
+**Who can detect a swap: the mobile networks, not Smile ID.** In February 2024, MTN, Cell C and Telkom launched a SIM Swap API through the GSMA Open Gateway initiative. You give it a phone number and it tells you whether that number's SIM changed recently. Vodacom wasn't part of that announcement, so covering Vodacom numbers needs an aggregator or a direct agreement with Vodacom.
+
+Smile ID's documentation doesn't describe any SIM-swap detection. Its phone-number check matches a number against identity records, which is a different thing. **Where Smile ID helps is getting the real person back in after a swap:** its selfie check confirms that the person is the one who enrolled.
+
+The defence has four layers:
+
+| Layer | What it does | Status |
+|---|---|---|
+| **1. Detect** | Before any send, PIN change or limit upgrade, call the network's SIM Swap API. If the SIM changed in the last few days, freeze sending. Receiving money and checking the balance still work. | Planned |
+| **2. Limit the damage** | The KYC tiers cap what a compromised account can move. Even in the worst case, a Level 0 account can lose at most R500 a day (R10,000 a month). | **Built** |
+| **3. Require something the SIM doesn't carry** | A swapped SIM gets an attacker onto the menu, but every send still needs the PIN. The PIN is never sent by SMS, and a PIN typed into a dial code is refused. | **Built** |
+| **4. Recover** | Unfreeze the account only after a Smile ID selfie check at a merchant or on the website. Also send an alert through a second channel, such as a trusted contact's number. | Planned. The web selfie flow exists as a mock |
+
+**The weak spot is PIN reset.** A reset must never be allowed on the phone number alone, because the phone number is exactly what a SIM swap steals. ZAKA has no PIN reset today. When one is added, it has to go through the layer 4 recovery check. It also needs a way to re-key the wallet: each wallet's key is encrypted with a key derived from the PIN, so a forgotten PIN can't simply be replaced. That means giving wallets a recovery path. The contract already supports guardians, but the backend creates wallets without any.
+
+### 2. USSD session timeouts
+
+Networks cut a USSD session after a short limit that each operator sets. The limit covers both how long the person takes on each screen and how long the backend takes to reply.
+
+| Strategy | What it does | Status |
+|---|---|---|
+| **Never make the user wait for the blockchain** | After the PIN, the backend checks limits and balance, saves the transfer as *pending* with a reference, and replies straight away: "Sending R50.00 to 0831234567. You will receive an SMS…". The blockchain part runs in the background (`backend/services/transferService.js`), and the SMS confirmation closes the loop. This is the most important of the four. | **Built** |
+| **Resume dropped sessions** | A send's progress is saved against the phone number (never the PIN) for `USSD_RESUME_MINUTES` (default 5). Redialling asks "Continue sending R50.00 to 0831234567? 1. Yes 2. No". | **Built** |
+| **Shortcut dialling** | Everything in one code, e.g. `*384*123*2*0831234567*50#`, leaves only the PIN screen. | **Built** |
+| **Protect against double sends** | Give each transfer a unique key built from the session and its inputs, so a retry after a timeout never sends the money twice. Today, pending transfers already count against the balance and limits, so a repeat can't overspend. But a retried request could still record a second transfer. | Planned |
+
+The target for every flow is:
+- four screens or fewer (Send ZAKA is menu → recipient → amount → PIN, or just the PIN screen with a shortcut)
+- a reply in under two seconds
+- slow work finished by SMS
+- a way to resume after a drop
+
+### 3. KYC without friction
+
+| Level | Where | Check | Status |
+|---|---|---|---|
+| **0** | USSD, at registration | The ID number's format, date of birth and checksum are validated instantly as a first filter. Next, check the number against the government database through Smile ID in the background, so registration doesn't slow down. | Checksum **built**. Smile ID lookup planned |
+| **1** | At a merchant or on the website | A Smile ID selfie plus ID check. This is the same flow used to recover an account after a SIM swap, so one integration covers both. | Merchant/website validation endpoint **built**. The web selfie flow is a mock of Smile ID Biometric KYC |
+
+**People start using ZAKA in about 30 seconds with nothing but an ID number.** They only do the full check when they need higher limits, so compliance scales with risk instead of blocking the first use.
+
+---
+
+## Smart contracts
+
+### Overview
 
 | Goal | How it is achieved |
 |---|---|
@@ -43,7 +138,7 @@ A full-stack smart-wallet infrastructure built on the [eth-infinitism ERC-4337](
 
 ---
 
-## Architecture
+### Architecture
 
 ```mermaid
 flowchart TD
@@ -86,33 +181,9 @@ flowchart TD
 
 ---
 
-## Project Structure
+### Contract Breakdowns
 
-```
-smartWalletFactory/
-├── contracts/
-│   ├── interfaces/
-│   │   └── IKYCRegistry.sol       # Shared FICA interface (wallet + paymaster)
-│   ├── FICARegistry.sol           # Concrete KYC oracle (operator-written)
-│   ├── MockZAR.sol                # Mock ZAR stablecoin with public faucet
-│   ├── SAWallet.sol               # ERC-4337 smart account implementation
-│   ├── SAWalletFactory.sol        # CREATE2 factory + ERC1967Proxy deployer
-│   └── ZARPaymaster.sol           # Verifying gas paymaster
-├── scripts/
-│   ├── deploy.js                  # Hardhat deploy script (Sepolia)
-│   └── signUserOp.js              # Full UserOperation build + sign + send
-├── test/
-│   └── SAWallet.test.js           # Comprehensive automated test suite
-├── hardhat.config.js              # Compiler, networks, Etherscan, gas reporter
-├── .env.example                   # All required environment variables
-└── package.json                   # npm scripts + dependency manifest
-```
-
----
-
-## Contract Breakdowns
-
-### `contracts/interfaces/IKYCRegistry.sol`
+#### `contracts/interfaces/IKYCRegistry.sol`
 
 **Purpose:** Shared interface that decouples the compliance layer from wallet and paymaster logic. Any production FICA oracle — Chainlink external adapter, Merkle-proof verifier, or a centralised registry — can be plugged in without touching `SAWallet` or `ZARPaymaster`.
 
@@ -133,7 +204,7 @@ smartWalletFactory/
 
 ---
 
-### `contracts/FICARegistry.sol`
+#### `contracts/FICARegistry.sol`
 
 **Purpose:** Lightweight on-chain store for FICA decisions. An off-chain compliance service (ID document + selfie + liveness check) writes results through a privileged **operator** key. Both `SAWallet` and `ZARPaymaster` read from this contract via `IKYCRegistry`.
 
@@ -168,7 +239,7 @@ On Sepolia both `SAWallet.kycEnforced` and `ZARPaymaster.kycEnforced` default to
 
 ---
 
-### `contracts/SAWallet.sol`
+#### `contracts/SAWallet.sol`
 
 **Purpose:** The core ERC-4337 smart account. Each user gets one proxy instance backed by this shared implementation. Designed to replace a traditional EOA wallet for South African users.
 
@@ -250,7 +321,7 @@ KYCRegistrySet(address registry, bool enforced)
 
 ---
 
-### `contracts/SAWalletFactory.sol`
+#### `contracts/SAWalletFactory.sol`
 
 **Purpose:** Deploys SAWallet proxy instances using CREATE2, producing deterministic addresses. Front-ends can display a user's wallet address and accept incoming ZAR stablecoin transfers **before** the wallet is deployed — deployment gas is only spent on the first outgoing transaction.
 
@@ -287,7 +358,7 @@ AccountCreated(address indexed account, address indexed owner, uint256 salt)
 
 ---
 
-### `contracts/ZARPaymaster.sol`
+#### `contracts/ZARPaymaster.sol`
 
 **Purpose:** Verifying paymaster that sponsors Ethereum gas on behalf of SA wallet users. Users never need to hold ETH. The wallet operator runs a backend that signs UserOperations that pass rate-limiting, fraud detection, and FICA status checks. An optional on-chain FICA check provides defence-in-depth.
 
@@ -359,9 +430,9 @@ Withdrawn(address to, uint256 amount)
 
 ---
 
-## Script Breakdowns
+### Script Breakdowns
 
-### `scripts/deploy.js`
+#### `scripts/deploy.js`
 
 Hardhat script that deploys the full system in four steps and prints a copy-paste summary for `.env`.
 
@@ -397,7 +468,7 @@ PAYMASTER_SIGNER_PRIVATE_KEY   # optional — falls back to DEPLOYER_PRIVATE_KEY
 
 ---
 
-### `scripts/signUserOp.js`
+#### `scripts/signUserOp.js`
 
 End-to-end demonstration of building, signing, and dispatching a gasless ZAR stablecoin transfer using a `UserOperation`. Designed as a reference implementation for front-end or backend integration.
 
@@ -441,9 +512,9 @@ ZAR_TOKEN_ADDRESS
 
 ---
 
-## Configuration
+### Configuration
 
-### `hardhat.config.js`
+#### `hardhat.config.js`
 
 | Setting | Value | Notes |
 |---|---|---|
@@ -455,7 +526,7 @@ ZAR_TOKEN_ADDRESS
 | Etherscan | `sepolia` key | Reads `ETHERSCAN_API_KEY` from `.env` for source verification |
 | Gas reporter | currency `ZAR` | Enable with `REPORT_GAS=true` |
 
-### `.env.example`
+#### `.env.example`
 
 | Variable | Required | Description |
 |---|---|---|
@@ -468,17 +539,17 @@ ZAR_TOKEN_ADDRESS
 
 ---
 
-## Getting Started
+### Getting Started
 
-### Prerequisites
+#### Prerequisites
 
-- Node.js ≥ 18
+- Node.js ≥ 20
 - npm ≥ 9
 - A Sepolia RPC URL (free tier on [Alchemy](https://www.alchemy.com/) or [Infura](https://infura.io/))
 - A Sepolia wallet with test ETH ([faucet](https://sepoliafaucet.com/))
 - An ERC-4337 bundler endpoint ([Stackup](https://app.stackup.sh/), [Pimlico](https://pimlico.io/), [Alchemy Rundler](https://www.alchemy.com/bundler))
 
-### Installation
+#### Installation
 
 ```bash
 git clone https://github.com/Thuto42096/smartWalletFactory.git
@@ -486,14 +557,14 @@ cd smartWalletFactory
 npm install
 ```
 
-### Environment setup
+#### Environment setup
 
 ```bash
 cp .env.example .env
 # Fill in SEPOLIA_RPC_URL, DEPLOYER_PRIVATE_KEY, ETHERSCAN_API_KEY, etc.
 ```
 
-### Compile
+#### Compile
 
 ```bash
 npm run compile
@@ -503,7 +574,7 @@ npx hardhat compile
 
 Expected output: `Compiled 37 Solidity files successfully`
 
-### Deploy to Sepolia
+#### Deploy to Sepolia
 
 ```bash
 npm run deploy:sepolia
@@ -513,7 +584,7 @@ npx hardhat run scripts/deploy.js --network sepolia
 
 The script prints contract addresses. Copy them into your `.env` for use by `signUserOp.js`.
 
-### Verify on Etherscan
+#### Verify on Etherscan
 
 ```bash
 # FICARegistry (no constructor args)
@@ -528,7 +599,7 @@ npx hardhat verify --network sepolia <PAYMASTER_ADDRESS> \
   "<PAYMASTER_SIGNER_ADDRESS>"
 ```
 
-### Send a gasless UserOperation
+#### Send a gasless UserOperation
 
 ```bash
 # After filling OWNER_PRIVATE_KEY, FACTORY_ADDRESS, PAYMASTER_ADDRESS, ZAR_TOKEN_ADDRESS in .env:
@@ -537,7 +608,7 @@ node scripts/signUserOp.js
 
 ---
 
-## ERC-4337 Transaction Lifecycle
+### ERC-4337 Transaction Lifecycle
 
 This diagram shows the exact call sequence for a gasless ZAR stablecoin transfer:
 
@@ -593,7 +664,7 @@ User receives ZAR stablecoin transfer — paid 0 ETH in gas fees ✓
 
 ---
 
-## Social Recovery Walkthrough
+### Social Recovery Walkthrough
 
 Social recovery lets trusted guardians restore wallet access when the owner loses their signing device — without a custodian and without exposing the private key.
 
@@ -640,13 +711,13 @@ If the original owner is not actually lost:
 
 ---
 
-## FICA / KYC Integration Guide
+### FICA / KYC Integration Guide
 
-### Testnet (default)
+#### Testnet (default)
 
 Both `kycEnforced` flags default to `false`. All transactions are permitted regardless of FICA status. The `FICARegistry` is deployed but not consulted.
 
-### Production integration steps
+#### Production integration steps
 
 1. **Off-chain FICA service** performs ID document + selfie + liveness verification.
 2. On success, the service calls `ficaRegistry.setKYCStatus(userWallet, true, txLimitZAR)` from a privileged operator key.
@@ -662,7 +733,7 @@ await paymaster.setKYCRegistry(ficaRegistryAddress, true);
 
 4. From this point, `SAWallet.execute()` and `ZARPaymaster._validatePaymasterUserOp()` both consult `IKYCRegistry.isKYCApproved(owner)` before proceeding.
 
-### Replacing the oracle
+#### Replacing the oracle
 
 Because `IKYCRegistry` is an interface, the `FICARegistry` can be swapped for any production implementation:
 
@@ -677,7 +748,7 @@ No changes to `SAWallet` or `ZARPaymaster` are required for any of the above.
 
 ---
 
-## Security Considerations
+### Security Considerations
 
 | Area | Risk | Mitigation |
 |---|---|---|
@@ -690,7 +761,7 @@ No changes to `SAWallet` or `ZARPaymaster` are required for any of the above.
 | `initiateRecovery` spam | Guardians could keep proposing to block a legitimate recovery | Each proposal increments `recoveryNonce` and resets the state; the owner can cancel at any time |
 | `RECOVERY_TIMELOCK` bypass | None — `executeRecovery` requires `block.timestamp ≥ readyAt + 48h` | Enforced at the contract level; no owner or admin override |
 
-### Auditing recommendations
+#### Auditing recommendations
 
 - Audit social recovery state machine transitions for edge cases (e.g. guardian removed mid-proposal).
 - Fuzz `_validateSignature` with malformed signatures to confirm `SIG_VALIDATION_FAILED` is always returned.
@@ -699,7 +770,7 @@ No changes to `SAWallet` or `ZARPaymaster` are required for any of the above.
 
 ---
 
-## Dependencies
+### Dependencies
 
 | Package | Version | Role |
 |---|---|---|
@@ -719,19 +790,20 @@ No changes to `SAWallet` or `ZARPaymaster` are required for any of the above.
 | Command | Description |
 |---|---|
 | `npm run compile` | Compile all Solidity contracts |
-| `npm test` | Run Hardhat tests (add test files to `./test/`) |
+| `npm test` | Run the Hardhat tests in `test/` |
 | `npm run deploy:sepolia` | Deploy full system to Sepolia |
+| `npm run verify:sepolia` | Verify the deployed contracts on Etherscan |
 | `npm run sign:userop` | Run the UserOperation signing example |
 
 ---
 
 ## Suggested Next Steps
 
-- **Write tests** — `test/SAWallet.test.js` covering happy-path execution, guardian recovery flow, FICA rejection, and factory CREATE2 determinism.
-- **Deploy a ZAR stablecoin mock** — for local `hardhat` network testing of end-to-end token transfers.
-- **Replace the FICARegistry operator** — with a multi-sig (e.g. Gnosis Safe) before mainnet.
-- **Wire a bundler SDK** — integrate [permissionless.js](https://docs.pimlico.io/permissionless) or the [Alchemy Account Kit](https://accountkit.alchemy.com/) in the front-end instead of raw `eth_sendUserOperation`.
-- **Enable Etherscan verification** — run `npx hardhat verify` for each deployed contract to make the source publicly readable.
+- **SIM-swap checks and recovery**: see [Security and reliability design](#1-sim-swap-attacks).
+- **Double-send keys** for USSD transfers: see [USSD session timeouts](#2-ussd-session-timeouts).
+- **Real Smile ID integration** for Level 0 (background ID lookup) and Level 1 (selfie + ID).
+- **Replace the FICARegistry operator** with a multi-sig (e.g. Gnosis Safe) before mainnet.
+- **Move key custody to a KMS/HSM** and the SQLite database to a managed database.
 
 ---
 
